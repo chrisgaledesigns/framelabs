@@ -13,7 +13,7 @@ from framelabs.camera.camera_interface import (
 )
 from framelabs.core.logger import get_logger
 
-logger = get_logger("camera.webcam_backend")
+logger = get_logger(__name__)
 
 
 class WebcamBackend(CameraInterface):
