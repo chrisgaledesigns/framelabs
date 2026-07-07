@@ -42,4 +42,4 @@ def get_logger(name: str) -> logging.Logger:
         logger = get_logger(__name__)
         logger.info("Project opened")
     """
-    return logging.getLogger(f"framelabs.{name}")
+    return logging.getLogger(name)
