@@ -73,3 +73,24 @@ class CameraManager:
         self._active_backend = backend
         self._active_camera_id = camera_id
         logger.info("CameraManager connected to camera %d", camera_id)
+
+    def disconnect(self) -> None:
+        """Disconnect the currently active camera, if any.
+
+        Safe to call even when nothing is connected -- this is a no-op in
+        that case rather than an error, so callers can disconnect
+        defensively without checking state first.
+        """
+        if self._active_backend is None:
+            logger.info("CameraManager.disconnect() called with no active camera")
+            return
+
+        camera_id = self._active_camera_id
+        try:
+            self._active_backend.disconnect()
+        except CameraError as exc:
+            logger.error("Error while disconnecting camera %s: %s", camera_id, exc)
+        finally:
+            self._active_backend = None
+            self._active_camera_id = None
+            logger.info("CameraManager disconnected camera %s", camera_id)
