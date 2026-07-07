@@ -54,6 +54,4 @@ class EventBus:
             try:
                 handler(payload)
             except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Handler for %s raised an exception: %s", event_name, exc
-                )
+                logger.error("Handler for %s raised an exception: %s", event_name, exc)
