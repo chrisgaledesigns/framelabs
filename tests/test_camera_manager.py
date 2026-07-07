@@ -85,3 +85,29 @@ def test_connect_failure_logs_and_reraises(mock_webcam_backend_class):
 
     assert manager._active_backend is None
     assert manager._active_camera_id is None
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_disconnect_after_connect(mock_webcam_backend_class):
+    """disconnect() should call the backend's disconnect() and clear state."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.disconnect()
+
+    mock_backend.disconnect.assert_called_once()
+    assert manager._active_backend is None
+    assert manager._active_camera_id is None
+
+
+def test_disconnect_when_not_connected_is_noop():
+    """disconnect() with nothing connected should not raise, and state
+    should remain None."""
+    manager = CameraManager()
+
+    manager.disconnect()  # should not raise
+
+    assert manager._active_backend is None
+    assert manager._active_camera_id is None
