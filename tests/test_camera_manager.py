@@ -68,6 +68,22 @@ def test_connect_success(mock_webcam_backend_class):
 
 
 @patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_connect_success_publishes_camera_connected_event(mock_webcam_backend_class):
+    """A successful connect() should publish CAMERA_CONNECTED with the
+    camera_id, so other modules (like a future UI status indicator) can
+    react without polling CameraManager directly."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    mock_event_bus = MagicMock()
+
+    manager = CameraManager(event_bus=mock_event_bus)
+    manager.connect(0)
+
+    mock_event_bus.publish.assert_called_once_with("CAMERA_CONNECTED", {"camera_id": 0})
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
 def test_connect_failure_logs_and_reraises(mock_webcam_backend_class):
     """If the backend fails to connect, CameraManager should re-raise
     CameraError and leave its state unchanged."""
@@ -194,6 +210,4 @@ def test_capture_real_disconnect_raises_and_publishes_event(mock_webcam_backend_
 
     assert manager._active_backend is None
     assert manager._active_camera_id is None
-    mock_event_bus.publish.assert_called_once_with(
-        "CAMERA_DISCONNECTED", {"camera_id": 0}
-    )
+    mock_event_bus.publish.assert_any_call("CAMERA_DISCONNECTED", {"camera_id": 0})

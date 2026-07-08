@@ -75,6 +75,7 @@ class CameraManager:
         self._active_backend = backend
         self._active_camera_id = camera_id
         logger.info("CameraManager connected to camera %d", camera_id)
+        self._event_bus.publish("CAMERA_CONNECTED", {"camera_id": camera_id})
 
     def disconnect(self) -> None:
         """Disconnect the currently active camera, if any.
@@ -96,6 +97,7 @@ class CameraManager:
             self._active_backend = None
             self._active_camera_id = None
             logger.info("CameraManager disconnected camera %s", camera_id)
+            self._event_bus.publish("CAMERA_DISCONNECTED", {"camera_id": camera_id})
 
     def capture(self) -> bytes:
         """Capture a still frame from the currently active camera.
