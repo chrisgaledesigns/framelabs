@@ -243,3 +243,69 @@ def test_capture_real_disconnect_raises_and_publishes_event(mock_webcam_backend_
     assert manager._active_backend is None
     assert manager._active_camera_id is None
     mock_event_bus.publish.assert_any_call("CAMERA_DISCONNECTED", {"camera_id": 0})
+
+
+def test_rescan_once_returns_current_list_and_publishes_on_first_call():
+    """First call starts from an empty known list, so any real result
+    counts as a change and should publish AVAILABLE_CAMERAS_CHANGED."""
+    event_bus = MagicMock()
+    manager = CameraManager(event_bus=event_bus)
+
+    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+        result = manager.rescan_once()
+
+    assert result == [0, 1]
+    event_bus.publish.assert_called_once_with(
+        "AVAILABLE_CAMERAS_CHANGED", {"available_cameras": [0, 1]}
+    )
+
+
+def test_rescan_once_does_not_publish_when_list_unchanged():
+    """Calling rescan_once() twice with the same result should only
+    publish once -- the second call finds nothing new."""
+    event_bus = MagicMock()
+    manager = CameraManager(event_bus=event_bus)
+
+    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+        manager.rescan_once()
+        result = manager.rescan_once()
+
+    assert result == [0, 1]
+    event_bus.publish.assert_called_once_with(
+        "AVAILABLE_CAMERAS_CHANGED", {"available_cameras": [0, 1]}
+    )
+
+
+def test_rescan_once_publishes_again_when_list_changes():
+    """A genuinely different result on a later call should publish
+    again, with the new list."""
+    event_bus = MagicMock()
+    manager = CameraManager(event_bus=event_bus)
+
+    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0]):
+        manager.rescan_once()
+
+    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+        result = manager.rescan_once()
+
+    assert result == [0, 1]
+    assert event_bus.publish.call_count == 2
+    event_bus.publish.assert_called_with(
+        "AVAILABLE_CAMERAS_CHANGED", {"available_cameras": [0, 1]}
+    )
+
+
+def test_rescan_once_skips_scan_while_capture_in_progress():
+    """While a capture is in flight, rescan_once() must not touch
+    discover_webcams() at all, and must not publish."""
+    event_bus = MagicMock()
+    manager = CameraManager(event_bus=event_bus)
+    manager._known_available_cameras = [0]
+    manager._capture_in_progress = True
+
+    with patch("framelabs.camera.camera_manager.discover_webcams") as mock_discover:
+        result = manager.rescan_once()
+
+    mock_discover.assert_not_called()
+    event_bus.publish.assert_not_called()
+    assert result == [0]
