@@ -54,6 +54,8 @@ class CameraManager:
         self._active_backend = None
         self._active_camera_id: int | None = None
         self._event_bus = event_bus if event_bus is not None else EventBus()
+        self._capture_in_progress = False
+        self._known_available_cameras: list[int] = []
 
     def connect(self, camera_id: int) -> None:
         """Connect to the camera at the given ID and make it active.
@@ -113,6 +115,7 @@ class CameraManager:
         if self._active_backend is None:
             raise CameraError("No active camera. Call connect() first.")
 
+        self._capture_in_progress = True
         try:
             return self._active_backend.capture()
         except CameraError as exc:
@@ -128,3 +131,34 @@ class CameraManager:
             raise CameraDisconnectedError(
                 f"Camera {camera_id} disconnected during capture"
             ) from exc
+        finally:
+            self._capture_in_progress = False
+
+    def rescan_once(self) -> list[int]:
+        """Check for unconnected webcams appearing or disappearing.
+
+        Synchronous and side-effect-light by design (per Option B from
+        this session's design discussion) -- CameraManager does not run
+        its own background thread. Whatever needs periodic scanning
+        (eventually the UI layer, via a QTimer) is responsible for
+        calling this repeatedly on its own schedule.
+
+        Skips the actual scan if a capture is currently in progress, to
+        avoid any chance of contending with the active camera's driver.
+        In that case, simply returns the last-known list unchanged.
+
+        Publishes AVAILABLE_CAMERAS_CHANGED only when the available
+        camera list has actually changed since the last call, so callers
+        aren't spammed with an event on every poll.
+        """
+        if self._capture_in_progress:
+            return self._known_available_cameras
+
+        current = discover_webcams()
+        if set(current) != set(self._known_available_cameras):
+            self._known_available_cameras = current
+            logger.info("Available cameras changed: %s", current)
+            self._event_bus.publish(
+                "AVAILABLE_CAMERAS_CHANGED", {"available_cameras": current}
+            )
+        return self._known_available_cameras
