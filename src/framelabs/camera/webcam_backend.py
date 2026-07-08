@@ -45,6 +45,11 @@ class WebcamBackend(CameraInterface):
             self._capture = None
             logger.info("Webcam disconnected")
 
+    def is_connected(self) -> bool:
+        if self._capture is None:
+            return False
+        return self._capture.isOpened()
+
     def start_live_view(self) -> None:
         self._require_connection()
         self._is_live_view_active = True

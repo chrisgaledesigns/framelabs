@@ -23,6 +23,15 @@ class CameraError(Exception):
     """Raised when a camera operation fails."""
 
 
+class CameraDisconnectedError(CameraError):
+    """Raised when a capture fails because the camera has actually disconnected.
+
+    This is distinct from a plain CameraError, which may represent a
+    transient failure. CameraManager only raises this specific type after
+    confirming (via is_connected()) that the camera is truly gone.
+    """
+
+
 class CameraInterface(ABC):
     """Abstract base class that all camera backends must implement.
 
@@ -41,6 +50,18 @@ class CameraInterface(ABC):
     @abstractmethod
     def disconnect(self) -> None:
         """Cleanly release the camera connection."""
+
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """Check whether the camera connection is still alive.
+
+        This performs a real, backend-specific check (not just returning a
+        cached flag) so that CameraManager can distinguish a transient
+        capture failure from an actual disconnection.
+
+        Returns:
+            True if the camera is currently connected and responsive.
+        """
 
     @abstractmethod
     def start_live_view(self) -> None:

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import cv2
 
-from framelabs.camera.camera_interface import CameraError
+from framelabs.camera.camera_interface import CameraDisconnectedError, CameraError
 from framelabs.camera.webcam_backend import WebcamBackend
+from framelabs.core.event_bus import EventBus
 from framelabs.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,9 +50,10 @@ class CameraManager:
     other module needing to change.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, event_bus: EventBus | None = None) -> None:
         self._active_backend = None
         self._active_camera_id: int | None = None
+        self._event_bus = event_bus if event_bus is not None else EventBus()
 
     def connect(self, camera_id: int) -> None:
         """Connect to the camera at the given ID and make it active.
@@ -94,3 +96,33 @@ class CameraManager:
             self._active_backend = None
             self._active_camera_id = None
             logger.info("CameraManager disconnected camera %s", camera_id)
+
+    def capture(self) -> bytes:
+        """Capture a still frame from the currently active camera.
+
+        Raises:
+            CameraError: if there is no active camera, or if the capture
+                failed but the camera is still connected (a transient
+                failure -- safe to retry).
+            CameraDisconnectedError: if the capture failed because the
+                camera has actually disconnected. Clears the active camera
+                state and publishes CAMERA_DISCONNECTED.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+
+        try:
+            return self._active_backend.capture()
+        except CameraError as exc:
+            if self._active_backend.is_connected():
+                logger.warning("Transient capture failure: %s", exc)
+                raise
+
+            camera_id = self._active_camera_id
+            logger.error("Camera %s disconnected during capture: %s", camera_id, exc)
+            self._active_backend = None
+            self._active_camera_id = None
+            self._event_bus.publish("CAMERA_DISCONNECTED", {"camera_id": camera_id})
+            raise CameraDisconnectedError(
+                f"Camera {camera_id} disconnected during capture"
+            ) from exc
