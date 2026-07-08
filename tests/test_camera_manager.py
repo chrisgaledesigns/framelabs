@@ -6,7 +6,7 @@ hardware being connected, per the Developer Handbook's testing rule.
 
 from unittest.mock import MagicMock, patch
 
-from framelabs.camera.camera_interface import CameraError
+from framelabs.camera.camera_interface import CameraDisconnectedError, CameraError
 from framelabs.camera.camera_manager import CameraManager, discover_webcams
 
 
@@ -111,3 +111,89 @@ def test_disconnect_when_not_connected_is_noop():
 
     assert manager._active_backend is None
     assert manager._active_camera_id is None
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_capture_success(mock_webcam_backend_class):
+    """A successful capture() should return the backend's bytes unchanged."""
+    mock_backend = MagicMock()
+    mock_backend.capture.return_value = b"fake-png-bytes"
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    result = manager.capture()
+
+    assert result == b"fake-png-bytes"
+    mock_backend.capture.assert_called_once()
+
+
+def test_capture_with_no_active_camera_raises_camera_error():
+    """capture() with nothing connected should raise CameraError, not
+    CameraDisconnectedError -- there's no camera to have disconnected."""
+    manager = CameraManager()
+
+    try:
+        manager.capture()
+        assert False, "Expected CameraError to be raised"
+    except CameraDisconnectedError:
+        assert False, "Should not raise CameraDisconnectedError with no active camera"
+    except CameraError:
+        pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_capture_transient_failure_reraises_camera_error(mock_webcam_backend_class):
+    """If capture() fails but is_connected() still reports True, this is a
+    transient failure -- the original CameraError should be re-raised, and
+    the camera should remain the active camera (not cleared)."""
+    mock_backend = MagicMock()
+    mock_backend.capture.side_effect = CameraError(
+        "Failed to capture frame from webcam"
+    )
+    mock_backend.is_connected.return_value = True
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+
+    try:
+        manager.capture()
+        assert False, "Expected CameraError to be raised"
+    except CameraDisconnectedError:
+        assert False, "Should not raise CameraDisconnectedError for a transient failure"
+    except CameraError:
+        pass
+
+    assert manager._active_backend is mock_backend
+    assert manager._active_camera_id == 0
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_capture_real_disconnect_raises_and_publishes_event(mock_webcam_backend_class):
+    """If capture() fails and is_connected() reports False, CameraManager
+    should raise CameraDisconnectedError, clear its active camera state,
+    and publish CAMERA_DISCONNECTED on the event bus."""
+    mock_backend = MagicMock()
+    mock_backend.capture.side_effect = CameraError(
+        "Failed to capture frame from webcam"
+    )
+    mock_backend.is_connected.return_value = False
+    mock_webcam_backend_class.return_value = mock_backend
+
+    mock_event_bus = MagicMock()
+
+    manager = CameraManager(event_bus=mock_event_bus)
+    manager.connect(0)
+
+    try:
+        manager.capture()
+        assert False, "Expected CameraDisconnectedError to be raised"
+    except CameraDisconnectedError:
+        pass
+
+    assert manager._active_backend is None
+    assert manager._active_camera_id is None
+    mock_event_bus.publish.assert_called_once_with(
+        "CAMERA_DISCONNECTED", {"camera_id": 0}
+    )
