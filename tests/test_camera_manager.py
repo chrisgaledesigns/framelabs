@@ -130,6 +130,38 @@ def test_disconnect_when_not_connected_is_noop():
 
 
 @patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_disconnect_after_connect_publishes_camera_disconnected_event(
+    mock_webcam_backend_class,
+):
+    """A disconnect() on an active camera should publish CAMERA_DISCONNECTED
+    with the camera_id, matching the payload shape CAMERA_CONNECTED uses."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    mock_event_bus = MagicMock()
+
+    manager = CameraManager(event_bus=mock_event_bus)
+    manager.connect(0)
+    mock_event_bus.reset_mock()  # ignore the CAMERA_CONNECTED call from connect()
+    manager.disconnect()
+
+    mock_event_bus.publish.assert_called_once_with(
+        "CAMERA_DISCONNECTED", {"camera_id": 0}
+    )
+
+
+def test_disconnect_when_not_connected_does_not_publish_event():
+    """disconnect() with nothing connected is a no-op and should not
+    publish CAMERA_DISCONNECTED -- there's no camera to have disconnected."""
+    mock_event_bus = MagicMock()
+    manager = CameraManager(event_bus=mock_event_bus)
+
+    manager.disconnect()
+
+    mock_event_bus.publish.assert_not_called()
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
 def test_capture_success(mock_webcam_backend_class):
     """A successful capture() should return the backend's bytes unchanged."""
     mock_backend = MagicMock()
