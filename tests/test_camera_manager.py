@@ -6,7 +6,11 @@ hardware being connected, per the Developer Handbook's testing rule.
 
 from unittest.mock import MagicMock, patch
 
-from framelabs.camera.camera_interface import CameraDisconnectedError, CameraError
+from framelabs.camera.camera_interface import (
+    CameraDisconnectedError,
+    CameraError,
+    CameraMetadata,
+)
 from framelabs.camera.camera_manager import CameraManager, discover_webcams
 
 
@@ -309,3 +313,33 @@ def test_rescan_once_skips_scan_while_capture_in_progress():
     mock_discover.assert_not_called()
     event_bus.publish.assert_not_called()
     assert result == [0]
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_get_active_camera_metadata_success(mock_webcam_backend_class):
+    """get_active_camera_metadata() should return the connected backend's
+    metadata unchanged."""
+    expected_metadata = CameraMetadata(
+        camera_id="0", display_name="Integrated Camera", backend_type="webcam"
+    )
+    mock_backend = MagicMock()
+    mock_backend.get_metadata.return_value = expected_metadata
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    result = manager.get_active_camera_metadata()
+
+    assert result == expected_metadata
+    mock_backend.get_metadata.assert_called_once()
+
+
+def test_get_active_camera_metadata_with_no_active_camera_raises_camera_error():
+    """With nothing connected, get_active_camera_metadata() should raise
+    CameraError rather than touching a nonexistent backend."""
+    manager = CameraManager()
+    try:
+        manager.get_active_camera_metadata()
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass

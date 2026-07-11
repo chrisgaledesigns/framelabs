@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import cv2
 
-from framelabs.camera.camera_interface import CameraDisconnectedError, CameraError
+from framelabs.camera.camera_interface import (
+    CameraDisconnectedError,
+    CameraError,
+    CameraMetadata,
+)
 from framelabs.camera.webcam_backend import WebcamBackend
 from framelabs.core.event_bus import EventBus
 from framelabs.core.logger import get_logger
@@ -133,6 +137,16 @@ class CameraManager:
             ) from exc
         finally:
             self._capture_in_progress = False
+
+    def get_active_camera_metadata(self) -> CameraMetadata:
+        """Return metadata for the currently active camera.
+
+        Raises:
+            CameraError: if there is no active camera.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        return self._active_backend.get_metadata()
 
     def rescan_once(self) -> list[int]:
         """Check for unconnected webcams appearing or disappearing.
