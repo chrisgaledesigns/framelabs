@@ -160,6 +160,17 @@ class CameraManager:
             return
         self._active_backend.stop_live_view()
 
+    @property
+    def capture_in_progress(self) -> bool:
+        """Whether a still capture is currently in flight.
+
+        Exposed so other worker-thread consumers of the same backend (e.g.
+        LiveViewController) can skip touching the camera handle while a
+        capture is happening, avoiding two threads calling the backend's
+        read() concurrently on the same hardware handle.
+        """
+        return self._capture_in_progress
+
     def read_preview_frame(self) -> bytes:
         """Grab a single live preview frame from the active camera.
 

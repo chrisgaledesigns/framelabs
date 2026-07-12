@@ -413,3 +413,28 @@ def test_read_preview_frame_with_no_active_camera_raises_camera_error():
         assert False, "Expected CameraError to be raised"
     except CameraError:
         pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_capture_in_progress_true_during_capture(mock_webcam_backend_class):
+    """capture_in_progress should be True while a capture is in flight.
+
+    Asserted from inside the mocked backend's capture() call itself, since
+    the real flag is only True for the duration of that call.
+    """
+    mock_backend = MagicMock()
+    observed = {}
+
+    def fake_capture():
+        observed["in_progress"] = manager.capture_in_progress
+        return b"fake-png-bytes"
+
+    mock_backend.capture.side_effect = fake_capture
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.capture()
+
+    assert observed["in_progress"] is True
+    assert manager.capture_in_progress is False
