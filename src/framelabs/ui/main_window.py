@@ -2,8 +2,9 @@
 
 import logging
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QLabel, QMainWindow, QSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self._create_actions()
         self._build_menu_bar()
+        self._build_central_panes()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -74,3 +76,35 @@ class MainWindow(QMainWindow):
         blender_menu = menu_bar.addMenu("&Blender")
         blender_menu.addAction(self.blender_action)
         blender_menu.addAction(self.export_action)
+
+    def _build_central_panes(self) -> None:
+        """Construct the three-pane splitter: Project Browser | Live Camera
+        View | Inspector.
+        """
+        self.project_browser_placeholder = self._make_placeholder("Project Browser")
+        self.live_view_placeholder = self._make_placeholder("Live Camera View")
+        self.inspector_placeholder = self._make_placeholder("Inspector")
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.project_browser_placeholder)
+        splitter.addWidget(self.live_view_placeholder)
+        splitter.addWidget(self.inspector_placeholder)
+
+        # Live Camera View gets most of the space; side panes stay narrower.
+        # setSizes() controls the *initial* pixel widths — QSplitter sizes
+        # panes by each widget's size hint otherwise, which is wrong here
+        # since "Inspector" and "Project Browser" are different text lengths.
+        splitter.setSizes([250, 780, 250])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(2, 1)
+
+        self.setCentralWidget(splitter)
+
+    @staticmethod
+    def _make_placeholder(label_text: str) -> QLabel:
+        """Build a labeled placeholder widget for a not-yet-implemented pane."""
+        label = QLabel(label_text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("border: 1px solid gray;")
+        return label
