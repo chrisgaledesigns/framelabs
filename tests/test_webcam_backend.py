@@ -104,3 +104,67 @@ def test_get_metadata_returns_expected_values():
 
     assert metadata.camera_id == "webcam-2"
     assert metadata.backend_type == "webcam"
+
+
+@patch("framelabs.camera.webcam_backend.cv2.VideoCapture")
+def test_read_preview_frame_without_live_view_raises_camera_error(mock_video_capture):
+    mock_capture = MagicMock()
+    mock_capture.isOpened.return_value = True
+    mock_video_capture.return_value = mock_capture
+
+    cam = WebcamBackend()
+    cam.connect()
+
+    with pytest.raises(CameraError):
+        cam.read_preview_frame()
+
+
+@patch("framelabs.camera.webcam_backend.cv2.imencode")
+@patch("framelabs.camera.webcam_backend.cv2.VideoCapture")
+def test_read_preview_frame_success_returns_bytes(mock_video_capture, mock_imencode):
+    mock_capture = MagicMock()
+    mock_capture.isOpened.return_value = True
+    mock_capture.read.return_value = (True, _fake_frame())
+    mock_video_capture.return_value = mock_capture
+
+    mock_imencode.return_value = (True, np.array([4, 5, 6], dtype=np.uint8))
+
+    cam = WebcamBackend()
+    cam.connect()
+    cam.start_live_view()
+    result = cam.read_preview_frame()
+
+    assert isinstance(result, bytes)
+    assert result == bytes([4, 5, 6])
+
+
+@patch("framelabs.camera.webcam_backend.cv2.VideoCapture")
+def test_read_preview_frame_read_failure_raises_camera_error(mock_video_capture):
+    mock_capture = MagicMock()
+    mock_capture.isOpened.return_value = True
+    mock_capture.read.return_value = (False, None)
+    mock_video_capture.return_value = mock_capture
+
+    cam = WebcamBackend()
+    cam.connect()
+    cam.start_live_view()
+
+    with pytest.raises(CameraError):
+        cam.read_preview_frame()
+
+
+@patch("framelabs.camera.webcam_backend.cv2.VideoCapture")
+def test_read_preview_frame_after_stop_live_view_raises_camera_error(
+    mock_video_capture,
+):
+    mock_capture = MagicMock()
+    mock_capture.isOpened.return_value = True
+    mock_video_capture.return_value = mock_capture
+
+    cam = WebcamBackend()
+    cam.connect()
+    cam.start_live_view()
+    cam.stop_live_view()
+
+    with pytest.raises(CameraError):
+        cam.read_preview_frame()

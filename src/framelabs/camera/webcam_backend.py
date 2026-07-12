@@ -59,6 +59,26 @@ class WebcamBackend(CameraInterface):
         self._is_live_view_active = False
         logger.info("Live view stopped")
 
+    def read_preview_frame(self) -> bytes:
+        self._require_connection()
+        if not self._is_live_view_active:
+            raise CameraError("Live view is not active. Call start_live_view() first.")
+
+        success, frame = self._capture.read()
+        if not success:
+            logger.error("Failed to read preview frame from webcam")
+            raise CameraError("Failed to read preview frame from webcam")
+
+        # JPEG, not PNG: preview frames are read many times per second and
+        # discarded immediately, so encode speed matters far more than
+        # lossless quality here (unlike capture(), which keeps its output).
+        encode_success, encoded = cv2.imencode(".jpg", frame)
+        if not encode_success:
+            logger.error("Failed to encode preview frame as JPEG")
+            raise CameraError("Failed to encode preview frame")
+
+        return encoded.tobytes()
+
     def capture(self) -> bytes:
         self._require_connection()
 
