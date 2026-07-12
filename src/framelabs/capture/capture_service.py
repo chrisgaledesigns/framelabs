@@ -14,9 +14,11 @@ ties them together with CameraManager and ProjectSerializer.
 
 import logging
 
+from framelabs.camera.camera_interface import CameraError
 from framelabs.camera.camera_manager import CameraManager
 from framelabs.capture.frame_writer import (
     CaptureWriteError,
+    DiskFullError,
     generate_thumbnail,
     write_frame,
 )
@@ -35,6 +37,19 @@ class CaptureServiceError(Exception):
     (camera trigger failure, or frame_writer exhausting its own internal
     retry). A metadata-write failure after the image is already good does
     NOT raise this -- see _write_metadata_with_one_retry's docstring below.
+    """
+
+
+class DiskFullServiceError(CaptureServiceError):
+    """Raised when the frame image write failed specifically because the
+    disk is full.
+
+    A subclass of CaptureServiceError, not a sibling -- any existing
+    caller that catches CaptureServiceError still catches this too. Wraps
+    frame_writer.DiskFullError, which is itself only raised after a real
+    OSError with errno.ENOSPC. Lets the UI layer show Feature 4's
+    distinct "Disk Full" / "Capture Aborted" dialog instead of the
+    generic capture-failed one.
     """
 
 
@@ -63,6 +78,9 @@ def capture_frame(
             frame_writer cannot produce a valid written image after its
             own internal retry. No frame is added to the timeline and
             nothing is left on disk in either case.
+        DiskFullServiceError: If the frame image write failed after
+            retry specifically because the disk is full. A subclass of
+            CaptureServiceError.
     """
     if project.project_path is None:
         raise ValueError("project.project_path is None; cannot capture frame")
@@ -72,13 +90,16 @@ def capture_frame(
     # Trigger + Receive
     try:
         image_bytes = camera_manager.capture()
-    except Exception as exc:
+    except CameraError as exc:
         logger.error("Capture failed for frame %d: %s", frame_number, exc)
         raise CaptureServiceError(f"Camera capture failed: {exc}") from exc
 
     # Verify + Write image
     try:
         write_frame(image_bytes, project, frame_number)
+    except DiskFullError as exc:
+        logger.error("Disk full writing frame %d: %s", frame_number, exc)
+        raise DiskFullServiceError(f"Disk full while writing frame: {exc}") from exc
     except CaptureWriteError as exc:
         logger.error("Failed to write frame %d: %s", frame_number, exc)
         raise CaptureServiceError(f"Failed to write frame: {exc}") from exc
@@ -90,7 +111,10 @@ def capture_frame(
         # The real frame image already exists and is valid at this point.
         # A thumbnail is a disposable derived preview (see frame_writer.py),
         # so losing it is not worth discarding an already-good captured
-        # frame over. Log clearly and continue.
+        # frame over. Log clearly and continue. This is deliberately still
+        # a bare CaptureWriteError catch (covers DiskFullError too, since
+        # it's a subclass) -- a disk-full thumbnail failure is exactly as
+        # non-fatal as any other thumbnail failure.
         logger.error(
             "Thumbnail generation failed for frame %d (frame image is still "
             "valid and kept): %s",

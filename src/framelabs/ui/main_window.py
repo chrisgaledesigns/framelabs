@@ -3,10 +3,11 @@
 import logging
 
 from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
+    QMessageBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
 from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
 from framelabs.ui.camera_controller import CameraController
+from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
@@ -36,6 +38,7 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_central_panes()
         self._start_camera_controller()
+        self._start_capture_controller()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -49,7 +52,8 @@ class MainWindow(QMainWindow):
         self.save_action.triggered.connect(lambda: logger.info("Save Project clicked"))
 
         self.capture_action = QAction("Capture", self)
-        self.capture_action.triggered.connect(lambda: logger.info("Capture clicked"))
+        self.capture_action.setShortcut(QKeySequence(Qt.Key.Key_Space))
+        self.capture_action.triggered.connect(self._on_capture)
 
         self.play_action = QAction("Play", self)
         self.play_action.triggered.connect(lambda: logger.info("Play/Pause clicked"))
@@ -147,6 +151,28 @@ class MainWindow(QMainWindow):
 
         self._camera_thread.start()
 
+    def _start_capture_controller(self) -> None:
+        """Create the capture worker thread and wire its signals to the UI.
+
+        Deliberately a SEPARATE thread from the camera-scanning thread
+        (not reusing self._camera_thread) -- a capture in progress and a
+        background camera-availability poll happening simultaneously on
+        the same thread could contend with each other. Shares the SAME
+        CameraManager instance camera_controller already owns, so capture
+        triggers the actual connected camera.
+        """
+        self._capture_thread = QThread(self)
+        self.capture_controller = CaptureController(
+            self.event_bus, self.camera_controller.camera_manager
+        )
+        self.capture_controller.moveToThread(self._capture_thread)
+
+        self.capture_controller.capture_succeeded.connect(self._on_capture_succeeded)
+        self.capture_controller.capture_failed.connect(self._on_capture_failed)
+        self.capture_controller.disk_full.connect(self._on_disk_full)
+
+        self._capture_thread.start()
+
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
 
@@ -159,6 +185,64 @@ class MainWindow(QMainWindow):
             self.project = dialog.project
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
+
+    def _on_capture(self) -> None:
+        """Request a capture on the worker thread.
+
+        No-op with a log line if there's no active project yet -- this is
+        a placeholder guard; a real "no project open" state (e.g. graying
+        out the Capture action) belongs to a later UI pass, not this one.
+        """
+        if self.project is None:
+            logger.warning("Capture requested with no active project; ignoring")
+            return
+        self.capture_controller.capture_requested.emit(self.project)
+
+    def _on_capture_succeeded(self, frame_number: int) -> None:
+        """React to a successful capture.
+
+        Log-only for now -- a visible "frame captured" indicator (thumbnail
+        appearing in the Timeline strip) belongs to the real Timeline UI
+        built in Phase 6, not bolted onto this pass.
+        """
+        logger.info("Capture succeeded: frame %d", frame_number)
+
+    def _on_capture_failed(self, message: str) -> None:
+        """Show Feature 4's "Capture Failed" dialog, with a Retry option.
+
+        Clicking Retry re-runs _on_capture() against the same
+        self.project used by the failed attempt -- capture_frame() only
+        requires a valid project_path, so repeating the same request is
+        always safe. Declining just dismisses the dialog; the failed
+        attempt already left nothing partial on disk (per Feature 4's
+        acceptance criteria).
+        """
+        logger.error("Capture failed: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Capture Failed")
+        box.setText("Capture Failed")
+        box.setInformativeText(message)
+        retry_button = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is retry_button:
+            self._on_capture()
+
+    def _on_disk_full(self, message: str) -> None:
+        """Show Feature 4's "Disk Full" dialog.
+
+        Acknowledge-only, no Retry -- per the Feature Spec, a disk-full
+        capture is aborted rather than retryable; the project remains
+        usable, but disk space needs to be freed before capturing again.
+        """
+        logger.error("Disk full: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Disk Full")
+        box.setText("Capture Aborted")
+        box.setInformativeText(message)
+        box.exec()
 
     def _on_rescan_camera(self) -> None:
         """Ask the camera worker thread to run an immediate scan.
@@ -186,19 +270,22 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut the camera worker thread down cleanly before closing.
+        """Shut both worker threads down cleanly before closing.
 
         Without this, Qt logs a "QThread destroyed while running" warning
         and the thread is torn down abruptly rather than exiting its event
-        loop normally. deleteLater() is queued onto the thread's own event
-        loop via its finished signal, so the controller (and its QTimer)
-        are cleaned up on the thread they actually belong to, not
-        whichever thread happens to be running when Python garbage
-        collects them.
+        loop normally. deleteLater() is queued onto each thread's own
+        event loop via its finished signal, so each controller is cleaned
+        up on the thread it actually belongs to.
         """
         self._camera_thread.finished.connect(self.camera_controller.deleteLater)
         self._camera_thread.quit()
         self._camera_thread.wait(2000)
+
+        self._capture_thread.finished.connect(self.capture_controller.deleteLater)
+        self._capture_thread.quit()
+        self._capture_thread.wait(2000)
+
         super().closeEvent(event)
 
     @staticmethod
