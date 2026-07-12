@@ -7,6 +7,12 @@ are disabled: the webcam backend has no real getters or setters for these
 metadata" decision) — they exist in the UI now because they're real,
 planned features once the DSLR backend lands, but are grayed out rather
 than faked or hidden.
+
+The Camera field also doubles as the live connection-status display
+("Scanning...", "{device} Connected", or blank/placeholder when nothing
+is connected) — driven by CameraController via MainWindow, not by this
+widget itself, since InspectorPanel should not know anything about
+threads or camera hardware.
 """
 
 from PySide6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
@@ -53,6 +59,14 @@ class InspectorPanel(QWidget):
         self.resolution_field = QLineEdit()
         self.resolution_field.setPlaceholderText("e.g. 1920x1080")
         layout.addRow("Resolution", self.resolution_field)
+
+    def set_camera_status(self, text: str) -> None:
+        """Update the Camera field to reflect current connection status."""
+        self.camera_field.setText(text)
+
+    def clear_camera_status(self) -> None:
+        """Clear the Camera field, falling back to its placeholder text."""
+        self.camera_field.clear()
 
     @staticmethod
     def _make_disabled_field() -> QLineEdit:

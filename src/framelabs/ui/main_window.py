@@ -2,7 +2,7 @@
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QLabel,
@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
+from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
@@ -29,9 +31,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("FrameLabs")
         self.resize(1280, 800)
         self.project: Project | None = None
+        self.event_bus = EventBus()
         self._create_actions()
         self._build_menu_bar()
         self._build_central_panes()
+        self._start_camera_controller()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -53,8 +57,8 @@ class MainWindow(QMainWindow):
         self.onion_action = QAction("Onion", self)
         self.onion_action.triggered.connect(lambda: logger.info("Onion Skin toggled"))
 
-        self.camera_action = QAction("Camera", self)
-        self.camera_action.triggered.connect(lambda: logger.info("Camera clicked"))
+        self.camera_action = QAction("Rescan", self)
+        self.camera_action.triggered.connect(self._on_rescan_camera)
 
         self.export_action = QAction("Export", self)
         self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
@@ -123,6 +127,26 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
+    def _start_camera_controller(self) -> None:
+        """Create the camera worker thread and wire its signals to the UI.
+
+        Per the Developer Handbook's "UI Never Blocks" rule, all real
+        camera work (device probing via OpenCV) happens on this dedicated
+        thread, never on the main/UI thread. See camera_controller.py's
+        module docstring for the full threading contract.
+        """
+        self._camera_thread = QThread(self)
+        self.camera_controller = CameraController(self.event_bus)
+        self.camera_controller.moveToThread(self._camera_thread)
+
+        self._camera_thread.started.connect(self.camera_controller.start_scanning)
+        self.camera_controller.camera_connecting.connect(self._on_camera_connecting)
+        self.camera_controller.camera_connected.connect(self._on_camera_connected)
+        self.camera_controller.camera_disconnected.connect(self._on_camera_disconnected)
+        self.camera_controller.no_camera_found.connect(self._on_no_camera_found)
+
+        self._camera_thread.start()
+
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
 
@@ -135,6 +159,47 @@ class MainWindow(QMainWindow):
             self.project = dialog.project
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
+
+    def _on_rescan_camera(self) -> None:
+        """Ask the camera worker thread to run an immediate scan.
+
+        Emits a signal rather than calling the controller directly, since
+        the controller lives on a different thread — Qt automatically
+        queues this call onto that thread. See camera_controller.py.
+        """
+        self.camera_controller.rescan_requested.emit()
+
+    def _on_camera_connecting(self) -> None:
+        """Reflect an in-progress scan in the Inspector's Camera field."""
+        self.inspector_panel.set_camera_status("Scanning...")
+
+    def _on_camera_connected(self, display_name: str) -> None:
+        """Reflect a successful camera connection in the Inspector."""
+        self.inspector_panel.set_camera_status(f"{display_name} Connected")
+
+    def _on_camera_disconnected(self) -> None:
+        """Reflect a camera disconnect in the Inspector."""
+        self.inspector_panel.clear_camera_status()
+
+    def _on_no_camera_found(self) -> None:
+        """Reflect a completed scan that found nothing, in the Inspector."""
+        self.inspector_panel.clear_camera_status()
+
+    def closeEvent(self, event) -> None:
+        """Shut the camera worker thread down cleanly before closing.
+
+        Without this, Qt logs a "QThread destroyed while running" warning
+        and the thread is torn down abruptly rather than exiting its event
+        loop normally. deleteLater() is queued onto the thread's own event
+        loop via its finished signal, so the controller (and its QTimer)
+        are cleaned up on the thread they actually belong to, not
+        whichever thread happens to be running when Python garbage
+        collects them.
+        """
+        self._camera_thread.finished.connect(self.camera_controller.deleteLater)
+        self._camera_thread.quit()
+        self._camera_thread.wait(2000)
+        super().closeEvent(event)
 
     @staticmethod
     def _make_placeholder(label_text: str) -> QLabel:
