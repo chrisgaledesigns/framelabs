@@ -20,6 +20,8 @@ from framelabs.project.project import Project
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.inspector_panel import InspectorPanel
+from framelabs.ui.live_view_controller import LiveViewController
+from framelabs.ui.live_view_widget import LiveViewWidget
 from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
@@ -43,6 +45,7 @@ class MainWindow(QMainWindow):
         self._start_camera_controller()
         self._start_capture_controller()
         self._start_project_controller()
+        self._start_live_view_controller()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -107,16 +110,16 @@ class MainWindow(QMainWindow):
         with the Timeline strip and Playback controls stacked below it.
         """
         self.project_browser_placeholder = self._make_placeholder("Project Browser")
-        self.live_view_placeholder = self._make_placeholder("Live Camera View")
+        self.live_view_widget = LiveViewWidget()
         self.inspector_panel = InspectorPanel()
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.project_browser_placeholder)
-        splitter.addWidget(self.live_view_placeholder)
+        splitter.addWidget(self.live_view_widget)
         splitter.addWidget(self.inspector_panel)
 
         # Live Camera View gets most of the space; side panes stay narrower.
-        # setSizes() controls the *initial* pixel widths — QSplitter sizes
+        # setSizes() controls the *initial* pixel widths -- QSplitter sizes
         # panes by each widget's size hint otherwise, which is wrong here
         # since "Inspector" and "Project Browser" are different text lengths.
         splitter.setSizes([250, 780, 250])
@@ -196,6 +199,26 @@ class MainWindow(QMainWindow):
         self.project_controller.load_failed.connect(self._on_load_failed)
 
         self._project_thread.start()
+
+    def _start_live_view_controller(self) -> None:
+        """Create the live-view worker thread and wire its signal to the UI.
+
+        A FOURTH separate thread -- same reasoning as the other three,
+        preview polling runs at up to ~30 times a second and shouldn't
+        contend with camera scanning, capture, or project save/load.
+        Shares the SAME CameraManager instance camera_controller owns, so
+        it reflects whatever camera is actually connected.
+        """
+        self._live_view_thread = QThread(self)
+        self.live_view_controller = LiveViewController(
+            self.event_bus, self.camera_controller.camera_manager
+        )
+        self.live_view_controller.moveToThread(self._live_view_thread)
+
+        self._live_view_thread.started.connect(self.live_view_controller.start)
+        self.live_view_controller.frame_ready.connect(self.live_view_widget.show_frame)
+
+        self._live_view_thread.start()
 
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
@@ -401,7 +424,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all three worker threads down cleanly before closing.
+        """Shut all four worker threads down cleanly before closing.
 
         Without this, Qt logs a "QThread destroyed while running" warning
         and the thread is torn down abruptly rather than exiting its event
@@ -420,6 +443,10 @@ class MainWindow(QMainWindow):
         self._project_thread.finished.connect(self.project_controller.deleteLater)
         self._project_thread.quit()
         self._project_thread.wait(2000)
+
+        self._live_view_thread.finished.connect(self.live_view_controller.deleteLater)
+        self._live_view_thread.quit()
+        self._live_view_thread.wait(2000)
 
         super().closeEvent(event)
 
