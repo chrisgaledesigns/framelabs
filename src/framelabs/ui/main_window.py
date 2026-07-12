@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QLabel, QMainWindow, QSplitter
 
+from framelabs.ui.inspector_panel import InspectorPanel
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
         """
         self.project_browser_placeholder = self._make_placeholder("Project Browser")
         self.live_view_placeholder = self._make_placeholder("Live Camera View")
-        self.inspector_placeholder = self._make_placeholder("Inspector")
+        self.inspector_placeholder = InspectorPanel()
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.project_browser_placeholder)
