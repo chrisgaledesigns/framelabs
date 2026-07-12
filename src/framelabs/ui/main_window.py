@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from framelabs.project.project import Project
 from framelabs.ui.inspector_panel import InspectorPanel
+from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("FrameLabs")
         self.resize(1280, 800)
+        self.project: Project | None = None
         self._create_actions()
         self._build_menu_bar()
         self._build_central_panes()
@@ -33,7 +36,7 @@ class MainWindow(QMainWindow):
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
         self.new_action = QAction("New Project", self)
-        self.new_action.triggered.connect(lambda: logger.info("New Project clicked"))
+        self.new_action.triggered.connect(self._on_new_project)
 
         self.open_action = QAction("Open Project", self)
         self.open_action.triggered.connect(lambda: logger.info("Open Project clicked"))
@@ -119,6 +122,19 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.playback_controls)
 
         self.setCentralWidget(central_widget)
+
+    def _on_new_project(self) -> None:
+        """Open the New Project dialog and adopt the created project.
+
+        Per Feature 1's acceptance criteria, the window title reflects the
+        new project's name once creation succeeds. If the user cancels the
+        dialog, nothing changes.
+        """
+        dialog = NewProjectDialog(self)
+        if dialog.exec():
+            self.project = dialog.project
+            self.setWindowTitle(f"FrameLabs — {self.project.name}")
+            logger.info("Project created: %s", self.project.name)
 
     @staticmethod
     def _make_placeholder(label_text: str) -> QLabel:
