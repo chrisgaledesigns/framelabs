@@ -4,9 +4,16 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QLabel, QMainWindow, QSplitter
+from PySide6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from framelabs.ui.inspector_panel import InspectorPanel
+from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +87,17 @@ class MainWindow(QMainWindow):
         blender_menu.addAction(self.export_action)
 
     def _build_central_panes(self) -> None:
-        """Construct the three-pane splitter: Project Browser | Live Camera
-        View | Inspector.
+        """Construct the full central area: the three-pane splitter on top,
+        with the Timeline strip and Playback controls stacked below it.
         """
         self.project_browser_placeholder = self._make_placeholder("Project Browser")
         self.live_view_placeholder = self._make_placeholder("Live Camera View")
-        self.inspector_placeholder = InspectorPanel()
+        self.inspector_panel = InspectorPanel()
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.project_browser_placeholder)
         splitter.addWidget(self.live_view_placeholder)
-        splitter.addWidget(self.inspector_placeholder)
+        splitter.addWidget(self.inspector_panel)
 
         # Live Camera View gets most of the space; side panes stay narrower.
         # setSizes() controls the *initial* pixel widths — QSplitter sizes
@@ -101,7 +108,17 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 1)
 
-        self.setCentralWidget(splitter)
+        self.timeline_strip = TimelineStrip()
+        self.playback_controls = PlaybackControls()
+
+        central_widget = QWidget()
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.addWidget(splitter, 1)
+        central_layout.addWidget(self.timeline_strip)
+        central_layout.addWidget(self.playback_controls)
+
+        self.setCentralWidget(central_widget)
 
     @staticmethod
     def _make_placeholder(label_text: str) -> QLabel:
