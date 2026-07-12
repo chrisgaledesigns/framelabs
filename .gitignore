@@ -218,3 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 test_capture.png
+# FrameLabs manual testing
+# Manually-created test projects (via File > New Project during UI testing)
+# should be created inside this folder so they're never accidentally committed.
+manual_test_projects/
