@@ -19,6 +19,7 @@ from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.new_project_dialog import NewProjectDialog
+from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class MainWindow(QMainWindow):
         self._build_central_panes()
         self._start_camera_controller()
         self._start_capture_controller()
+        self._start_project_controller()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -49,7 +51,8 @@ class MainWindow(QMainWindow):
         self.open_action.triggered.connect(lambda: logger.info("Open Project clicked"))
 
         self.save_action = QAction("Save Project", self)
-        self.save_action.triggered.connect(lambda: logger.info("Save Project clicked"))
+        self.save_action.setShortcut(QKeySequence.StandardKey.Save)
+        self.save_action.triggered.connect(self._on_save_project)
 
         self.capture_action = QAction("Capture", self)
         self.capture_action.setShortcut(QKeySequence(Qt.Key.Key_Space))
@@ -173,6 +176,23 @@ class MainWindow(QMainWindow):
 
         self._capture_thread.start()
 
+    def _start_project_controller(self) -> None:
+        """Create the project save/load worker thread and wire its signals.
+
+        Deliberately a THIRD separate thread, distinct from both the
+        camera and capture threads -- Save/Open can be triggered at any
+        time and shouldn't contend with either an in-progress capture or
+        a background camera scan.
+        """
+        self._project_thread = QThread(self)
+        self.project_controller = ProjectController(self.event_bus)
+        self.project_controller.moveToThread(self._project_thread)
+
+        self.project_controller.save_succeeded.connect(self._on_save_succeeded)
+        self.project_controller.save_failed.connect(self._on_save_failed)
+
+        self._project_thread.start()
+
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
 
@@ -185,6 +205,36 @@ class MainWindow(QMainWindow):
             self.project = dialog.project
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
+
+    def _on_save_project(self) -> None:
+        """Request a save on the worker thread.
+
+        No-op with a log line if there's no active project yet -- same
+        guard pattern as _on_capture().
+        """
+        if self.project is None:
+            logger.warning("Save requested with no active project; ignoring")
+            return
+        self.project_controller.save_requested.emit(self.project)
+
+    def _on_save_succeeded(self) -> None:
+        """React to a successful save. Log-only -- no visible confirmation
+        needed for a routine save; a failed save gets a dialog instead
+        since that's the case the user actually needs to act on.
+        """
+        logger.info("Project saved: %s", self.project.name if self.project else "?")
+
+    def _on_save_failed(self, message: str) -> None:
+        """Show a "Save Failed" dialog. A failed save risks losing work,
+        so this is surfaced visibly rather than left as a log line.
+        """
+        logger.error("Save failed: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Save Failed")
+        box.setText("Save Failed")
+        box.setInformativeText(message)
+        box.exec()
 
     def _on_capture(self) -> None:
         """Request a capture on the worker thread.
@@ -270,7 +320,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut both worker threads down cleanly before closing.
+        """Shut all three worker threads down cleanly before closing.
 
         Without this, Qt logs a "QThread destroyed while running" warning
         and the thread is torn down abruptly rather than exiting its event
@@ -285,6 +335,10 @@ class MainWindow(QMainWindow):
         self._capture_thread.finished.connect(self.capture_controller.deleteLater)
         self._capture_thread.quit()
         self._capture_thread.wait(2000)
+
+        self._project_thread.finished.connect(self.project_controller.deleteLater)
+        self._project_thread.quit()
+        self._project_thread.wait(2000)
 
         super().closeEvent(event)
 
