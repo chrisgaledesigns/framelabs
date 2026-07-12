@@ -343,3 +343,73 @@ def test_get_active_camera_metadata_with_no_active_camera_raises_camera_error():
         assert False, "Expected CameraError to be raised"
     except CameraError:
         pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_start_live_view_delegates_to_backend(mock_webcam_backend_class):
+    """start_live_view() should call the active backend's start_live_view()."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.start_live_view()
+
+    mock_backend.start_live_view.assert_called_once()
+
+
+def test_start_live_view_with_no_active_camera_raises_camera_error():
+    """start_live_view() with nothing connected should raise CameraError."""
+    manager = CameraManager()
+
+    try:
+        manager.start_live_view()
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_stop_live_view_delegates_to_backend(mock_webcam_backend_class):
+    """stop_live_view() should call the active backend's stop_live_view()."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.stop_live_view()
+
+    mock_backend.stop_live_view.assert_called_once()
+
+
+def test_stop_live_view_with_no_active_camera_is_noop():
+    """stop_live_view() with nothing connected should not raise."""
+    manager = CameraManager()
+
+    manager.stop_live_view()  # should not raise
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_read_preview_frame_returns_backend_bytes(mock_webcam_backend_class):
+    """read_preview_frame() should return the backend's bytes unchanged."""
+    mock_backend = MagicMock()
+    mock_backend.read_preview_frame.return_value = b"fake-jpeg-bytes"
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    result = manager.read_preview_frame()
+
+    assert result == b"fake-jpeg-bytes"
+    mock_backend.read_preview_frame.assert_called_once()
+
+
+def test_read_preview_frame_with_no_active_camera_raises_camera_error():
+    """read_preview_frame() with nothing connected should raise CameraError."""
+    manager = CameraManager()
+
+    try:
+        manager.read_preview_frame()
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass

@@ -138,6 +138,39 @@ class CameraManager:
         finally:
             self._capture_in_progress = False
 
+    def start_live_view(self) -> None:
+        """Start the active camera's live preview feed.
+
+        Raises:
+            CameraError: if there is no active camera.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        self._active_backend.start_live_view()
+
+    def stop_live_view(self) -> None:
+        """Stop the active camera's live preview feed.
+
+        Safe to call even with no active camera -- a no-op in that case,
+        matching disconnect()'s defensive style, since stopping a preview
+        that was never running (e.g. after a disconnect already cleared
+        the backend) shouldn't be an error.
+        """
+        if self._active_backend is None:
+            return
+        self._active_backend.stop_live_view()
+
+    def read_preview_frame(self) -> bytes:
+        """Grab a single live preview frame from the active camera.
+
+        Raises:
+            CameraError: if there is no active camera, live view hasn't
+                been started, or the grab fails.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        return self._active_backend.read_preview_frame()
+
     def get_active_camera_metadata(self) -> CameraMetadata:
         """Return metadata for the currently active camera.
 
