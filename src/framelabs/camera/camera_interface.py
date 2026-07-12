@@ -72,6 +72,22 @@ class CameraInterface(ABC):
         """Stop the live preview feed."""
 
     @abstractmethod
+    def read_preview_frame(self) -> bytes:
+        """Grab a single live preview frame, for display only.
+
+        Deliberately separate from capture(): this does not write a PNG,
+        write metadata, or update the timeline -- it only grabs whatever
+        the camera currently sees, encoded for fast display. Encoding
+        format is backend-defined (e.g. JPEG, chosen for speed over
+        capture()'s lossless PNG) since preview quality doesn't need to
+        match a final captured frame.
+
+        Raises:
+            CameraError: if start_live_view() has not been called, or if
+                the grab fails.
+        """
+
+    @abstractmethod
     def capture(self) -> bytes:
         """Capture a single still frame.
 
