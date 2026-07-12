@@ -1,10 +1,12 @@
 """Main application window for FrameLabs."""
 
 import logging
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
+    QFileDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -48,7 +50,7 @@ class MainWindow(QMainWindow):
         self.new_action.triggered.connect(self._on_new_project)
 
         self.open_action = QAction("Open Project", self)
-        self.open_action.triggered.connect(lambda: logger.info("Open Project clicked"))
+        self.open_action.triggered.connect(self._on_open_project)
 
         self.save_action = QAction("Save Project", self)
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
@@ -190,6 +192,8 @@ class MainWindow(QMainWindow):
 
         self.project_controller.save_succeeded.connect(self._on_save_succeeded)
         self.project_controller.save_failed.connect(self._on_save_failed)
+        self.project_controller.load_succeeded.connect(self._on_load_succeeded)
+        self.project_controller.load_failed.connect(self._on_load_failed)
 
         self._project_thread.start()
 
@@ -205,6 +209,83 @@ class MainWindow(QMainWindow):
             self.project = dialog.project
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
+
+    def _on_open_project(self) -> None:
+        """Open a folder picker and request a load on the worker thread.
+
+        A project IS a folder (containing project.ffproj at its top
+        level), so this picks the project folder itself -- not a parent
+        folder, unlike New Project's Browse.
+        """
+        chosen = QFileDialog.getExistingDirectory(self, "Open Project")
+        if not chosen:
+            return
+        self.project_controller.load_requested.emit(Path(chosen))
+
+    def _on_load_succeeded(self, project: Project, missing_files: list) -> None:
+        """React to a successful load.
+
+        Per Feature 1's edge case, missing frame images don't block
+        loading -- if any were found missing, show the warning dialog
+        with Continue/Locate Missing Files/Cancel before adopting the
+        project. Otherwise adopt immediately.
+        """
+        if missing_files:
+            self._show_missing_frames_dialog(project, missing_files)
+        else:
+            self._adopt_project(project)
+
+    def _on_load_failed(self, message: str) -> None:
+        """Show a "Could Not Open Project" dialog.
+
+        Covers a missing/corrupt project.ffproj or an unsupported version
+        -- the user needs to see this, not just find it in a log.
+        """
+        logger.error("Load failed: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Could Not Open Project")
+        box.setText("Could Not Open Project")
+        box.setInformativeText(message)
+        box.exec()
+
+    def _adopt_project(self, project: Project) -> None:
+        """Make project the active project and reflect it in the UI."""
+        self.project = project
+        self.setWindowTitle(f"FrameLabs — {project.name}")
+        logger.info("Project opened: %s", project.name)
+
+    def _show_missing_frames_dialog(
+        self, project: Project, missing_files: list
+    ) -> None:
+        """Show Feature 1's "N frames are missing" dialog.
+
+        Continue adopts the project as-is. Locate Missing Files opens the
+        project's images/ folder in the system file explorer so the user
+        can manually replace the missing files, then re-shows this same
+        dialog -- opening the folder doesn't itself resolve anything, the
+        user still needs to explicitly Continue or Cancel afterward.
+        Cancel leaves the current project (if any) untouched.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Missing Frames")
+        box.setText(f"{len(missing_files)} frames are missing.")
+        continue_button = box.addButton("Continue", QMessageBox.ButtonRole.AcceptRole)
+        locate_button = box.addButton(
+            "Locate Missing Files", QMessageBox.ButtonRole.ActionRole
+        )
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is continue_button:
+            self._adopt_project(project)
+        elif clicked is locate_button:
+            images_dir = project.project_path / "images"
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(images_dir)))
+            self._show_missing_frames_dialog(project, missing_files)
+        # Cancel: no-op, dialog just closes.
 
     def _on_save_project(self) -> None:
         """Request a save on the worker thread.
