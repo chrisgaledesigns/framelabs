@@ -14,6 +14,7 @@ orchestration lives in capture_service.py.
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from typing import Callable
 
@@ -41,6 +42,18 @@ class CaptureWriteError(Exception):
     """Raised when a captured frame cannot be verified, written, or thumbnailed."""
 
 
+class DiskFullError(CaptureWriteError):
+    """Raised specifically when a write failed because the disk is full.
+
+    A subclass of CaptureWriteError, not a sibling -- any existing caller
+    that catches CaptureWriteError still catches this too. Only raised when
+    the underlying OSError's errno is ENOSPC ("No space left on device"),
+    so this is never a guess based on a message string. Lets the UI layer
+    show Feature 4's distinct "Disk Full" / "Capture Aborted" dialog
+    instead of the generic capture-failed one.
+    """
+
+
 def _decode_image(image_bytes: bytes) -> np.ndarray:
     """Decode raw image bytes into a real image, or raise CaptureWriteError.
 
@@ -60,6 +73,11 @@ def _write_with_retry(path: Path, write_fn: Callable[[Path], bool]) -> None:
     write_fn must return a truthy value on success, matching cv2.imwrite's
     own return convention (True on success, False on failure -- it does not
     raise for most failure modes, so the return value has to be checked).
+
+    Raises DiskFullError instead of the generic CaptureWriteError if the
+    final failed attempt's OSError.errno is ENOSPC -- this is checked only
+    after retries are exhausted, so a transient disk-full condition that
+    clears up by the second attempt never surfaces as an error at all.
     """
     last_error: OSError | None = None
     for _ in range(WRITE_ATTEMPTS):
@@ -68,6 +86,9 @@ def _write_with_retry(path: Path, write_fn: Callable[[Path], bool]) -> None:
                 return
         except OSError as exc:
             last_error = exc
+
+    if last_error is not None and last_error.errno == errno.ENOSPC:
+        raise DiskFullError(f"Disk full while writing {path}: {last_error}")
 
     detail = f": {last_error}" if last_error else ""
     raise CaptureWriteError(f"Failed to write {path} after retry{detail}.")
@@ -89,6 +110,9 @@ def write_frame(image_bytes: bytes, project: Project, frame_number: int) -> Path
         CaptureWriteError: If project.project_path is None, the image data
             cannot be decoded, or writing to disk fails even after one
             retry.
+        DiskFullError: If writing to disk fails after one retry
+            specifically because the disk is full. A subclass of
+            CaptureWriteError.
     """
     if project.project_path is None:
         raise CaptureWriteError("Project has no project_path; cannot write frame.")
@@ -117,6 +141,13 @@ def generate_thumbnail(image_bytes: bytes, project: Project, frame_number: int) 
         CaptureWriteError: If project.project_path is None, the image data
             cannot be decoded, or writing to disk fails even after one
             retry.
+        DiskFullError: If writing to disk fails after one retry
+            specifically because the disk is full. A subclass of
+            CaptureWriteError. Note that capture_service.py currently
+            treats ANY thumbnail failure as non-fatal (the real frame
+            image is already written and kept), so this being a disk-full
+            case specifically does not change that -- it's still just
+            logged and continued past, same as before.
     """
     if project.project_path is None:
         raise CaptureWriteError("Project has no project_path; cannot write thumbnail.")

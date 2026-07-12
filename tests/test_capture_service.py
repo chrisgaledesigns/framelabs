@@ -4,9 +4,13 @@ import cv2
 import numpy as np
 import pytest
 
-from framelabs.camera.camera_interface import CameraMetadata
-from framelabs.capture.capture_service import CaptureServiceError, capture_frame
-from framelabs.capture.frame_writer import CaptureWriteError
+from framelabs.camera.camera_interface import CameraError, CameraMetadata
+from framelabs.capture.capture_service import (
+    CaptureServiceError,
+    DiskFullServiceError,
+    capture_frame,
+)
+from framelabs.capture.frame_writer import CaptureWriteError, DiskFullError
 from framelabs.capture.metadata import MetadataWriteError
 from framelabs.capture.metadata import write_metadata as real_write_metadata
 from framelabs.core.event_bus import EventBus
@@ -36,7 +40,7 @@ class FakeCameraManager:
     def capture(self) -> bytes:
         self.capture_call_count += 1
         if self.capture_should_fail:
-            raise RuntimeError("simulated camera trigger failure")
+            raise CameraError("simulated camera trigger failure")
         return _real_png_bytes()
 
     def get_active_camera_metadata(self) -> CameraMetadata:
@@ -109,6 +113,23 @@ def test_capture_frame_write_failure_raises_and_does_not_update_timeline(
     monkeypatch.setattr("framelabs.capture.capture_service.write_frame", _boom)
 
     with pytest.raises(CaptureServiceError):
+        capture_frame(project, camera_manager, event_bus)
+
+    assert project.frames == []
+    assert received == []
+
+
+def test_capture_frame_disk_full_raises_disk_full_service_error(tmp_path, monkeypatch):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, received = _make_event_bus()
+
+    def _disk_full(*args, **kwargs):
+        raise DiskFullError("simulated disk full")
+
+    monkeypatch.setattr("framelabs.capture.capture_service.write_frame", _disk_full)
+
+    with pytest.raises(DiskFullServiceError):
         capture_frame(project, camera_manager, event_bus)
 
     assert project.frames == []
