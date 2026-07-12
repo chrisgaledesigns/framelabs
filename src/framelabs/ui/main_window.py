@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
+from framelabs.timeline.timeline import Timeline
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.inspector_panel import InspectorPanel
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("FrameLabs")
         self.resize(1280, 800)
         self.project: Project | None = None
+        self.timeline: Timeline | None = None
         self.event_bus = EventBus()
         self._create_actions()
         self._build_menu_bar()
@@ -225,11 +227,15 @@ class MainWindow(QMainWindow):
 
         Per Feature 1's acceptance criteria, the window title reflects the
         new project's name once creation succeeds. If the user cancels the
-        dialog, nothing changes.
+        dialog, nothing changes. A fresh Timeline is created over the new
+        project's frames at the same time -- Timeline holds a live
+        reference to project.frames, so no further sync is needed as
+        captures happen.
         """
         dialog = NewProjectDialog(self)
         if dialog.exec():
             self.project = dialog.project
+            self.timeline = Timeline(self.project)
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
 
@@ -273,8 +279,14 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def _adopt_project(self, project: Project) -> None:
-        """Make project the active project and reflect it in the UI."""
+        """Make project the active project and reflect it in the UI.
+
+        A fresh Timeline is created over the opened project's frames at
+        the same time -- see _on_new_project for why this needs no
+        further manual sync.
+        """
         self.project = project
+        self.timeline = Timeline(project)
         self.setWindowTitle(f"FrameLabs — {project.name}")
         logger.info("Project opened: %s", project.name)
 
