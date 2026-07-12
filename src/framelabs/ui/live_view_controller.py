@@ -11,6 +11,20 @@ Instances of this class are meant to be moved to a dedicated QThread via
 moveToThread(), same threading contract as CameraController and
 CaptureController -- see camera_controller.py's module docstring for the
 full explanation of why this pattern is used throughout the UI layer.
+
+IMPORTANT thread-safety note: EventBus.publish() calls subscriber handlers
+SYNCHRONOUSLY on whichever thread published the event -- it is plain
+Python pub/sub, not a Qt signal, so it does NOT marshal the call onto this
+controller's own thread. CAMERA_CONNECTED/CAMERA_DISCONNECTED are
+published from CameraController's worker thread, so
+_on_camera_connected_event/_on_camera_disconnected_event below actually
+run on THAT thread, not this one. Touching self._timer (a QTimer, which
+has thread affinity) directly from there raises "Timers cannot be
+started/stopped from another thread". The fix: those handlers only emit
+internal Qt signals (_start_timer_requested/_stop_timer_requested); Qt
+detects the emitting thread differs from the connected slot's own thread
+and automatically delivers it as a queued connection, running the actual
+timer.start()/stop() safely back on this controller's own thread.
 """
 
 from __future__ import annotations
@@ -39,6 +53,12 @@ class LiveViewController(QObject):
 
     frame_ready = Signal(bytes)
 
+    # Internal-only signals -- see module docstring for why these exist
+    # instead of calling self._timer.start()/stop() directly from the
+    # EventBus handlers.
+    _start_timer_requested = Signal()
+    _stop_timer_requested = Signal()
+
     def __init__(self, event_bus: EventBus, camera_manager: CameraManager) -> None:
         """Build the controller against a shared EventBus and CameraManager.
 
@@ -50,6 +70,9 @@ class LiveViewController(QObject):
         self._event_bus = event_bus
         self.camera_manager = camera_manager
         self._timer: QTimer | None = None
+
+        self._start_timer_requested.connect(self._start_timer)
+        self._stop_timer_requested.connect(self._stop_timer)
 
         event_bus.subscribe("CAMERA_CONNECTED", self._on_camera_connected_event)
         event_bus.subscribe("CAMERA_DISCONNECTED", self._on_camera_disconnected_event)
@@ -68,24 +91,37 @@ class LiveViewController(QObject):
         self._timer.timeout.connect(self._read_frame)
 
     def _on_camera_connected_event(self, payload: dict[str, Any]) -> None:
-        """Start live view and begin polling once a camera is connected."""
+        """Start live view and request the timer start.
+
+        Runs on whichever thread published CAMERA_CONNECTED (the camera
+        controller's worker thread), NOT this controller's own thread --
+        see module docstring. camera_manager.start_live_view() is a plain
+        Python call and safe to make cross-thread (same established
+        precedent as CaptureController calling camera_manager.capture()
+        from its own separate thread). The actual QTimer.start() is
+        deferred via a signal so it runs on the correct thread.
+        """
         try:
             self.camera_manager.start_live_view()
         except CameraError as exc:
             logger.error("Failed to start live view: %s", exc)
             return
+        self._start_timer_requested.emit()
+
+    def _on_camera_disconnected_event(self, payload: dict[str, Any]) -> None:
+        """Request the timer stop. See module docstring for the threading note."""
+        self._stop_timer_requested.emit()
+
+    def _start_timer(self) -> None:
+        """Actually start the polling timer. Always runs on this controller's
+        own thread, via the queued _start_timer_requested connection."""
         if self._timer is not None:
             self._timer.start()
         logger.info("Live view polling started")
 
-    def _on_camera_disconnected_event(self, payload: dict[str, Any]) -> None:
-        """Stop polling when the camera disconnects.
-
-        No need to call camera_manager.stop_live_view() here -- the backend
-        is already gone by the time CAMERA_DISCONNECTED is published (see
-        CameraManager.disconnect()/capture()'s cleanup), so there's nothing
-        left to stop it on. Just stop our own timer.
-        """
+    def _stop_timer(self) -> None:
+        """Actually stop the polling timer. Always runs on this controller's
+        own thread, via the queued _stop_timer_requested connection."""
         if self._timer is not None:
             self._timer.stop()
         logger.info("Live view polling stopped")

@@ -5,6 +5,14 @@ test_camera_controller.py -- these tests are about the decisions
 LiveViewController makes, not about CameraManager itself. No real QThread
 or QTimer event loop is spun up; the timer class is mocked and signal
 emissions are verified via a MagicMock slot.
+
+Note: _on_camera_connected_event/_on_camera_disconnected_event only emit
+internal _start_timer_requested/_stop_timer_requested signals (see the
+module's threading docstring) -- they call the actual _start_timer/
+_stop_timer slots directly here (bypassing the signal/queued-connection
+machinery), since a plain unit test has no real cross-thread delivery to
+exercise; that part is verified manually, per the established pattern for
+this codebase's threading code.
 """
 
 from unittest.mock import MagicMock, patch
@@ -51,36 +59,65 @@ def test_start_configures_timer_but_does_not_start_it(mock_timer_class):
     mock_timer.start.assert_not_called()
 
 
-def test_on_camera_connected_starts_live_view_and_timer():
+def test_on_camera_connected_starts_live_view_and_requests_timer_start():
     """CAMERA_CONNECTED should start live view on the backend (via
-    CameraManager) and start the polling timer."""
+    CameraManager) and emit _start_timer_requested -- not call the timer
+    directly, since this handler may run on a different thread than the
+    one that owns the timer (see module docstring)."""
     controller, mock_manager, _ = _make_controller()
-    controller._timer = MagicMock()
+
+    start_requested_slot = MagicMock()
+    controller._start_timer_requested.connect(start_requested_slot)
 
     controller._on_camera_connected_event({"camera_id": 0})
 
     mock_manager.start_live_view.assert_called_once()
-    controller._timer.start.assert_called_once()
+    start_requested_slot.assert_called_once()
 
 
-def test_on_camera_connected_start_live_view_failure_does_not_start_timer():
-    """If start_live_view() fails, the timer should not start -- there's
-    nothing to poll yet."""
+def test_on_camera_connected_start_live_view_failure_does_not_request_timer():
+    """If start_live_view() fails, _start_timer_requested should not be
+    emitted -- there's nothing to poll yet."""
     controller, mock_manager, _ = _make_controller()
     mock_manager.start_live_view.side_effect = CameraError("No active camera.")
-    controller._timer = MagicMock()
+
+    start_requested_slot = MagicMock()
+    controller._start_timer_requested.connect(start_requested_slot)
 
     controller._on_camera_connected_event({"camera_id": 0})  # should not raise
 
-    controller._timer.start.assert_not_called()
+    start_requested_slot.assert_not_called()
 
 
-def test_on_camera_disconnected_stops_timer():
-    """CAMERA_DISCONNECTED should stop the polling timer."""
+def test_on_camera_disconnected_requests_timer_stop():
+    """CAMERA_DISCONNECTED should emit _stop_timer_requested."""
+    controller, _, _ = _make_controller()
+
+    stop_requested_slot = MagicMock()
+    controller._stop_timer_requested.connect(stop_requested_slot)
+
+    controller._on_camera_disconnected_event({"camera_id": 0})
+
+    stop_requested_slot.assert_called_once()
+
+
+def test_start_timer_starts_the_real_timer():
+    """_start_timer() (the actual slot, run on this controller's own
+    thread via the queued connection) should start the timer."""
     controller, _, _ = _make_controller()
     controller._timer = MagicMock()
 
-    controller._on_camera_disconnected_event({"camera_id": 0})
+    controller._start_timer()
+
+    controller._timer.start.assert_called_once()
+
+
+def test_stop_timer_stops_the_real_timer():
+    """_stop_timer() (the actual slot) should stop the timer."""
+    controller, _, _ = _make_controller()
+    controller._timer = MagicMock()
+
+    controller._stop_timer()
 
     controller._timer.stop.assert_called_once()
 
