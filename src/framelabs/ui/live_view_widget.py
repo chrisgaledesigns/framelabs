@@ -2,23 +2,39 @@
 
 Displays whatever frame it's given -- either a live camera preview frame
 (from LiveViewController) or a specific saved frame during Play/Onion Skin
--- through a single shared rendering surface. Overlays (safe areas,
-histogram, onion skin) are added as later layers on top of this core
-display; this module owns only the base image display, zoom, pan, and fit.
+-- through a single shared rendering surface. Onion skin overlays (Feature
+6) are additional pixmap items in the same scene, stacked ABOVE the current
+frame via zValue, each rendered at partial opacity so the current frame
+remains visible beneath the ghosted layers -- the current frame's own
+pixmap is fully opaque, so an onion layer stacked below it would be
+entirely hidden regardless of its own opacity. Remaining overlays (safe
+areas, histogram) are still to come as later layers on top of this core
+display.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
-from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
+from PySide6.QtWidgets import (
+    QGraphicsColorizeEffect,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+)
 
 # Feature Spec Feature 3: "Mouse wheel" zoom, scaled per notch.
 ZOOM_FACTOR_PER_STEP = 1.15
 
+# The current frame is the base layer -- every onion skin layer renders
+# above it (positive zValue, see _add_onion_layers) at partial opacity, so
+# the current frame stays visible underneath the ghosted layers.
+CURRENT_FRAME_Z_VALUE = 0.0
+
 
 class LiveViewWidget(QGraphicsView):
-    """Displays a live or saved frame with zoom, pan, and fit-to-view.
+    """Displays a live or saved frame with zoom, pan, fit-to-view, and
+    Onion Skin overlays.
 
     Zoom: mouse wheel, centered on the cursor.
     Pan: middle mouse button drag.
@@ -35,7 +51,10 @@ class LiveViewWidget(QGraphicsView):
         self.setScene(self._scene)
 
         self._pixmap_item = QGraphicsPixmapItem()
+        self._pixmap_item.setZValue(CURRENT_FRAME_Z_VALUE)
         self._scene.addItem(self._pixmap_item)
+
+        self._onion_items: list[QGraphicsPixmapItem] = []
 
         self._has_frame = False
         self._user_has_zoomed = False
@@ -70,6 +89,63 @@ class LiveViewWidget(QGraphicsView):
 
         if was_first_frame or not self._user_has_zoomed:
             self.fit_to_view()
+
+    def set_onion_layers(
+        self, before_layers: list[tuple[bytes, float, str]], after_layers: list
+    ) -> None:
+        """Replace the onion skin overlay with a new set of frame layers.
+
+        Args:
+            before_layers: (image_bytes, opacity, tint_hex) tuples for
+                frames before the current one, nearest-first -- the same
+                shape OnionSkinController.frames_ready emits.
+            after_layers: Same shape, for frames after the current one.
+
+        Each layer is drawn at (0, 0) in scene coordinates, on the
+        assumption that every captured frame in a project shares the same
+        resolution -- true for real capture, since Resolution is fixed at
+        project creation. Stacking is controlled by zValue: every onion
+        layer sits ABOVE the current frame (CURRENT_FRAME_Z_VALUE), so its
+        partial opacity lets the current frame show through -- stacking
+        it below the current frame's opaque pixmap would hide it entirely,
+        regardless of its own opacity. Among onion layers themselves, the
+        nearest frame on each side sits closest to the current frame's
+        zValue, with further frames stacked progressively above that.
+        """
+        self._clear_onion_layers()
+        self._add_onion_layers(before_layers)
+        self._add_onion_layers(after_layers)
+
+    def _add_onion_layers(self, layers: list[tuple[bytes, float, str]]) -> None:
+        """Add one side's onion layers (already nearest-first) to the scene."""
+        for distance, (image_bytes, opacity, tint_hex) in enumerate(layers, start=1):
+            image = QImage.fromData(image_bytes)
+            if image.isNull():
+                continue
+
+            item = QGraphicsPixmapItem(QPixmap.fromImage(image))
+            item.setPos(0, 0)
+            item.setOpacity(opacity)
+            # Every onion layer renders above the current frame
+            # (CURRENT_FRAME_Z_VALUE), so it's actually visible through its
+            # own partial opacity. Nearer frames sit closest to the
+            # current frame's zValue; further frames stack progressively
+            # above that.
+            item.setZValue(CURRENT_FRAME_Z_VALUE + distance)
+
+            effect = QGraphicsColorizeEffect()
+            effect.setColor(QColor(tint_hex))
+            effect.setStrength(1.0)
+            item.setGraphicsEffect(effect)
+
+            self._scene.addItem(item)
+            self._onion_items.append(item)
+
+    def _clear_onion_layers(self) -> None:
+        """Remove and discard every currently-shown onion skin layer."""
+        for item in self._onion_items:
+            self._scene.removeItem(item)
+        self._onion_items.clear()
 
     def fit_to_view(self) -> None:
         """Scale and center the current frame to fill the viewport.

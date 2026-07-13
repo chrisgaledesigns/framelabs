@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
+from framelabs.timeline.onion_skin import OnionSkinSettings
 from framelabs.timeline.timeline import Timeline
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
@@ -24,6 +25,7 @@ from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
 from framelabs.ui.new_project_dialog import NewProjectDialog
+from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
 
@@ -40,6 +42,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self.project: Project | None = None
         self.timeline: Timeline | None = None
+        self.onion_settings = OnionSkinSettings()
         self.event_bus = EventBus()
         self._create_actions()
         self._build_menu_bar()
@@ -48,6 +51,7 @@ class MainWindow(QMainWindow):
         self._start_capture_controller()
         self._start_project_controller()
         self._start_live_view_controller()
+        self._start_onion_skin_controller()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -69,7 +73,9 @@ class MainWindow(QMainWindow):
         self.play_action.triggered.connect(lambda: logger.info("Play/Pause clicked"))
 
         self.onion_action = QAction("Onion", self)
-        self.onion_action.triggered.connect(lambda: logger.info("Onion Skin toggled"))
+        self.onion_action.setCheckable(True)
+        self.onion_action.setShortcut(QKeySequence(Qt.Key.Key_O))
+        self.onion_action.triggered.connect(self._on_toggle_onion_skin)
 
         self.camera_action = QAction("Rescan", self)
         self.camera_action.triggered.connect(self._on_rescan_camera)
@@ -222,6 +228,45 @@ class MainWindow(QMainWindow):
 
         self._live_view_thread.start()
 
+    def _start_onion_skin_controller(self) -> None:
+        """Create the onion skin worker thread and wire its signal to the UI.
+
+        A FIFTH separate thread -- onion skin refreshes read a handful of
+        frame files off disk (see onion_skin_controller.py), which per the
+        Handbook's "UI Never Blocks" rule must not run on the main thread,
+        and shouldn't contend with camera scanning, capture, live preview,
+        or project save/load either.
+        """
+        self._onion_skin_thread = QThread(self)
+        self.onion_skin_controller = OnionSkinController()
+        self.onion_skin_controller.moveToThread(self._onion_skin_thread)
+
+        self.onion_skin_controller.frames_ready.connect(
+            self.live_view_widget.set_onion_layers
+        )
+
+        self._onion_skin_thread.start()
+
+    def _refresh_onion_skin(self) -> None:
+        """Ask the onion skin worker thread to reload overlay frames.
+
+        No-op if there's no active project/timeline yet. Emits a signal
+        rather than calling the controller directly, since it lives on a
+        different thread -- Qt automatically queues this call onto that
+        thread.
+        """
+        if self.timeline is None:
+            return
+        self.onion_skin_controller.refresh_requested.emit(
+            self.timeline, self.onion_settings
+        )
+
+    def _on_toggle_onion_skin(self, checked: bool) -> None:
+        """Turn Onion Skin on/off and refresh the overlay to match."""
+        self.onion_settings.enabled = checked
+        logger.info("Onion Skin %s", "enabled" if checked else "disabled")
+        self._refresh_onion_skin()
+
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
 
@@ -238,6 +283,7 @@ class MainWindow(QMainWindow):
             self.timeline = Timeline(self.project)
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
+            self._refresh_onion_skin()
 
     def _on_open_project(self) -> None:
         """Open a folder picker and request a load on the worker thread.
@@ -289,6 +335,7 @@ class MainWindow(QMainWindow):
         self.timeline = Timeline(project)
         self.setWindowTitle(f"FrameLabs — {project.name}")
         logger.info("Project opened: %s", project.name)
+        self._refresh_onion_skin()
 
     def _show_missing_frames_dialog(
         self, project: Project, missing_files: list
@@ -367,11 +414,20 @@ class MainWindow(QMainWindow):
     def _on_capture_succeeded(self, frame_number: int) -> None:
         """React to a successful capture.
 
-        Log-only for now -- a visible "frame captured" indicator (thumbnail
-        appearing in the Timeline strip) belongs to the real Timeline UI
-        built in Phase 6, not bolted onto this pass.
+        Advances the Timeline's playhead to the newly captured frame (the
+        latest one) before refreshing Onion Skin -- otherwise the playhead
+        stays stuck at index 0 forever, and frames_before_current() can
+        never return anything, since nothing else moves it yet (Play
+        doesn't exist). Once Play is built, this remains correct: capture
+        always means "the new frame is now current."
+        A visible "frame captured" indicator (thumbnail appearing in the
+        Timeline strip) belongs to the real Timeline UI built in Phase 6,
+        not bolted onto this pass.
         """
         logger.info("Capture succeeded: frame %d", frame_number)
+        if self.timeline is not None:
+            self.timeline.go_to_index(len(self.timeline) - 1)
+        self._refresh_onion_skin()
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.
@@ -436,7 +492,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all four worker threads down cleanly before closing.
+        """Shut all five worker threads down cleanly before closing.
 
         Without this, Qt logs a "QThread destroyed while running" warning
         and the thread is torn down abruptly rather than exiting its event
@@ -459,6 +515,10 @@ class MainWindow(QMainWindow):
         self._live_view_thread.finished.connect(self.live_view_controller.deleteLater)
         self._live_view_thread.quit()
         self._live_view_thread.wait(2000)
+
+        self._onion_skin_thread.finished.connect(self.onion_skin_controller.deleteLater)
+        self._onion_skin_thread.quit()
+        self._onion_skin_thread.wait(2000)
 
         super().closeEvent(event)
 
