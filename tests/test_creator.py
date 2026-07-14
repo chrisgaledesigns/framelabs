@@ -7,6 +7,7 @@ from framelabs.project.creator import (
     ProjectCreationError,
     create_new_project,
 )
+from framelabs.project.serializer import CURRENT_VERSION
 
 
 def test_create_new_project_creates_folder_and_subfolders(tmp_path):
@@ -37,7 +38,7 @@ def test_create_new_project_returns_project_with_given_fields(tmp_path):
         camera_lens="50mm",
     )
 
-    assert project.version == 1
+    assert project.version == CURRENT_VERSION
     assert project.name == "Robot Walk Cycle"
     assert project.fps == 12
     assert project.resolution == (6000, 4000)

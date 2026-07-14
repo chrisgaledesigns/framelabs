@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from framelabs.project.project import Project
-from framelabs.project.serializer import ProjectSerializer
+from framelabs.project.serializer import CURRENT_VERSION, ProjectSerializer
 
 # Characters invalid in filenames on Windows. Disallowed on every platform
 # so a project created on one OS is always safe to move to another.
@@ -113,7 +113,7 @@ def create_new_project(
             (project_dir / subfolder).mkdir()
 
         project = Project(
-            version=1,
+            version=CURRENT_VERSION,
             name=name,
             fps=fps,
             resolution=resolution,

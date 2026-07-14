@@ -13,7 +13,16 @@ from pathlib import Path
 
 from framelabs.project.project import Frame, Project
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
+
+# Every project.ffproj version this serializer can still read. Per the
+# Developer Handbook ("Versioned. Forward-compatible whenever possible."),
+# loading an older file must not hard-fail just because CURRENT_VERSION has
+# moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), so
+# those fields are read with .get() defaults regardless of which supported
+# version is on disk.
+SUPPORTED_VERSIONS = (1, 2)
+
 PROJECT_FILENAME = "project.ffproj"
 
 
@@ -56,7 +65,13 @@ class ProjectSerializer:
                 "lens": project.camera_lens,
             },
             "frames": [
-                {"number": frame.number, "file": frame.file} for frame in project.frames
+                {
+                    "number": frame.number,
+                    "file": frame.file,
+                    "notes": frame.notes,
+                    "marker": frame.marker,
+                }
+                for frame in project.frames
             ],
         }
 
@@ -71,7 +86,12 @@ class ProjectSerializer:
             project_path: The project's folder (containing project.ffproj).
 
         Returns:
-            The reconstructed Project, with project_path set.
+            The reconstructed Project, with project_path set. Files at any
+            version in SUPPORTED_VERSIONS load successfully; the returned
+            Project is always upgraded to CURRENT_VERSION in memory, so the
+            next save() call persists it at the current schema (a v1 file
+            with no notes/marker fields transparently becomes v2 on disk
+            the next time it's saved, not before).
 
         Raises:
             ProjectLoadError: If the file is missing, malformed, missing
@@ -98,17 +118,25 @@ class ProjectSerializer:
                 f"Project file is missing 'version': {file_path}"
             ) from exc
 
-        if version != CURRENT_VERSION:
+        if version not in SUPPORTED_VERSIONS:
             raise ProjectLoadError(
                 f"Unsupported project version {version!r} "
-                f"(expected {CURRENT_VERSION}): {file_path}"
+                f"(supported: {SUPPORTED_VERSIONS}): {file_path}"
             )
 
         try:
             camera = data.get("camera") or {}
-            frames = [Frame(number=f["number"], file=f["file"]) for f in data["frames"]]
+            frames = [
+                Frame(
+                    number=f["number"],
+                    file=f["file"],
+                    notes=f.get("notes", ""),
+                    marker=f.get("marker", False),
+                )
+                for f in data["frames"]
+            ]
             project = Project(
-                version=version,
+                version=CURRENT_VERSION,
                 name=data["name"],
                 fps=data["fps"],
                 resolution=tuple(data["resolution"]),
