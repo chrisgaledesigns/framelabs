@@ -25,6 +25,19 @@ internal Qt signals (_start_timer_requested/_stop_timer_requested); Qt
 detects the emitting thread differs from the connected slot's own thread
 and automatically delivers it as a queued connection, running the actual
 timer.start()/stop() safely back on this controller's own thread.
+
+pause_requested/resume_requested (public) reuse this exact same
+indirection for a second caller: MainWindow, from the main thread, pauses
+preview polling while Feature 7 Playback is running and resumes it when
+Playback stops. Without this, PlaybackController's timer and this
+controller's timer both independently emit frames to the same
+LiveViewWidget.show_frame() slot, and whichever one's tick lands last
+"wins" the screen for that instant -- visibly as a rapid strobe between
+the live camera feed and whatever frame Playback just set. Pausing this
+controller's polling is preferred over pausing PlaybackController instead,
+since Play is the user's explicit, deliberate action; the live feed
+yielding to it (and resuming automatically once Play stops) is the
+correct behavior, not the other way around.
 """
 
 from __future__ import annotations
@@ -53,6 +66,12 @@ class LiveViewController(QObject):
 
     frame_ready = Signal(bytes)
 
+    # Public -- MainWindow connects to these directly (from the main
+    # thread) to pause/resume preview polling during Playback. See module
+    # docstring for why this exists.
+    pause_requested = Signal()
+    resume_requested = Signal()
+
     # Internal-only signals -- see module docstring for why these exist
     # instead of calling self._timer.start()/stop() directly from the
     # EventBus handlers.
@@ -73,6 +92,12 @@ class LiveViewController(QObject):
 
         self._start_timer_requested.connect(self._start_timer)
         self._stop_timer_requested.connect(self._stop_timer)
+
+        # Public pause/resume simply reuse the same thread-safe indirection
+        # already used internally -- both ultimately just start/stop the
+        # same QTimer on this controller's own thread.
+        self.pause_requested.connect(self._stop_timer)
+        self.resume_requested.connect(self._start_timer)
 
         event_bus.subscribe("CAMERA_CONNECTED", self._on_camera_connected_event)
         event_bus.subscribe("CAMERA_DISCONNECTED", self._on_camera_disconnected_event)
@@ -114,14 +139,16 @@ class LiveViewController(QObject):
 
     def _start_timer(self) -> None:
         """Actually start the polling timer. Always runs on this controller's
-        own thread, via the queued _start_timer_requested connection."""
+        own thread, via a queued connection (_start_timer_requested or the
+        public resume_requested)."""
         if self._timer is not None:
             self._timer.start()
         logger.info("Live view polling started")
 
     def _stop_timer(self) -> None:
         """Actually stop the polling timer. Always runs on this controller's
-        own thread, via the queued _stop_timer_requested connection."""
+        own thread, via a queued connection (_stop_timer_requested or the
+        public pause_requested)."""
         if self._timer is not None:
             self._timer.stop()
         logger.info("Live view polling stopped")

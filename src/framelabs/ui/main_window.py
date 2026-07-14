@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
 from framelabs.timeline.onion_skin import OnionSkinSettings
+from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
@@ -26,6 +27,7 @@ from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
 from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.onion_skin_controller import OnionSkinController
+from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
 
@@ -43,7 +45,13 @@ class MainWindow(QMainWindow):
         self.project: Project | None = None
         self.timeline: Timeline | None = None
         self.onion_settings = OnionSkinSettings()
+        self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
+        # Set True as the very first thing closeEvent() does. Guards
+        # _refresh_onion_skin() against firing once worker-thread teardown
+        # has started -- see closeEvent()'s docstring for the full
+        # explanation of the shutdown race this prevents.
+        self._shutting_down = False
         self._create_actions()
         self._build_menu_bar()
         self._build_central_panes()
@@ -52,6 +60,8 @@ class MainWindow(QMainWindow):
         self._start_project_controller()
         self._start_live_view_controller()
         self._start_onion_skin_controller()
+        self._start_playback_controller()
+        self._wire_playback_controls()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -70,7 +80,7 @@ class MainWindow(QMainWindow):
         self.capture_action.triggered.connect(self._on_capture)
 
         self.play_action = QAction("Play", self)
-        self.play_action.triggered.connect(lambda: logger.info("Play/Pause clicked"))
+        self.play_action.triggered.connect(self._on_toggle_play)
 
         self.onion_action = QAction("Onion", self)
         self.onion_action.setCheckable(True)
@@ -247,15 +257,51 @@ class MainWindow(QMainWindow):
 
         self._onion_skin_thread.start()
 
+    def _start_playback_controller(self) -> None:
+        """Create the playback worker thread and wire its signals to the UI.
+
+        A SIXTH separate thread -- playback runs continuously while active
+        and reads a frame image off disk on every tick (see
+        playback_controller.py's module docstring), so it shouldn't contend
+        with camera scanning, capture, live preview, onion skin refreshes,
+        or project save/load.
+        """
+        self._playback_thread = QThread(self)
+        self.playback_controller = PlaybackController()
+        self.playback_controller.moveToThread(self._playback_thread)
+
+        self.playback_controller.frame_ready.connect(self.live_view_widget.show_frame)
+        self.playback_controller.playhead_advanced.connect(
+            self._on_playback_playhead_advanced
+        )
+        self.playback_controller.playback_finished.connect(self._on_playback_finished)
+
+        self._playback_thread.start()
+
+    def _wire_playback_controls(self) -> None:
+        """Connect the PlaybackControls widget to real playback state.
+
+        PlaybackControls itself holds no logic (see its own docstring) --
+        MainWindow owns self.playback_settings and drives
+        PlaybackController directly from these raw widget signals.
+        """
+        self.playback_controls.play_button.clicked.connect(self._on_toggle_play)
+        self.playback_controls.loop_button.toggled.connect(self._on_loop_toggled)
+        self.playback_controls.speed_combo.currentIndexChanged.connect(
+            self._on_speed_changed
+        )
+
     def _refresh_onion_skin(self) -> None:
         """Ask the onion skin worker thread to reload overlay frames.
 
-        No-op if there's no active project/timeline yet. Emits a signal
-        rather than calling the controller directly, since it lives on a
-        different thread -- Qt automatically queues this call onto that
-        thread.
+        No-op if there's no active project/timeline yet, OR if the window
+        is currently shutting down (self._shutting_down) -- see
+        closeEvent()'s docstring for the exact race this second guard
+        closes. Emits a signal rather than calling the controller
+        directly, since it lives on a different thread -- Qt automatically
+        queues this call onto that thread.
         """
-        if self.timeline is None:
+        if self._shutting_down or self.timeline is None:
             return
         self.onion_skin_controller.refresh_requested.emit(
             self.timeline, self.onion_settings
@@ -266,6 +312,81 @@ class MainWindow(QMainWindow):
         self.onion_settings.enabled = checked
         logger.info("Onion Skin %s", "enabled" if checked else "disabled")
         self._refresh_onion_skin()
+
+    def _on_toggle_play(self) -> None:
+        """Start or stop playback, per Feature 7.
+
+        No-op with a log line if there's no active project yet -- same
+        guard pattern as _on_capture() and _on_save_project().
+        """
+        if self.project is None or self.timeline is None:
+            logger.warning("Play requested with no active project; ignoring")
+            return
+        if self.playback_settings.is_playing:
+            self._stop_playback()
+        else:
+            self._start_playback()
+
+    def _start_playback(self) -> None:
+        """Begin playback from the current playhead position."""
+        self.playback_settings.is_playing = True
+        self.playback_controls.play_button.setText("Pause")
+        self.playback_controller.start_requested.emit(
+            self.timeline, self.playback_settings
+        )
+        logger.info("Playback start requested")
+
+    def _stop_playback(self) -> None:
+        """Stop playback because the user asked to -- as opposed to
+        PlaybackController stopping itself at the end of the sequence with
+        Loop off, which goes through _on_playback_finished instead.
+        """
+        self.playback_controller.stop_requested.emit()
+        self._reset_playback_ui()
+        logger.info("Playback stop requested")
+
+    def _on_playback_finished(self) -> None:
+        """React to PlaybackController stopping itself (reached the end of
+        the sequence with Loop off) -- un-press Play so the button reflects
+        reality instead of staying stuck on "Pause" with nothing playing.
+        """
+        logger.info("Playback finished")
+        self._reset_playback_ui()
+
+    def _reset_playback_ui(self) -> None:
+        """Reset the Play button back to its stopped state."""
+        self.playback_settings.is_playing = False
+        self.playback_controls.play_button.setText("Play")
+
+    def _on_playback_playhead_advanced(self) -> None:
+        """Keep Onion Skin in sync while Playback moves the same
+        Timeline.current_index Onion Skin reads from.
+
+        Without this, Onion Skin only ever refreshes on capture -- once
+        Play starts moving the playhead on its own, the "before" ghosted
+        frames would go stale and stop matching the frame actually on
+        screen. _refresh_onion_skin() already no-ops safely if Onion Skin
+        is currently disabled (OnionSkinController just emits empty
+        layers) OR if the window is shutting down, so this is safe to call
+        unconditionally on every tick.
+        """
+        self._refresh_onion_skin()
+
+    def _on_loop_toggled(self, checked: bool) -> None:
+        """Update Loop live.
+
+        PlaybackController re-reads settings.loop from this same shared
+        PlaybackSettings object on every tick (see its _advance()
+        docstring), so this takes effect immediately, even mid-playback.
+        """
+        self.playback_settings.loop = checked
+        logger.info("Loop %s", "enabled" if checked else "disabled")
+
+    def _on_speed_changed(self, index: int) -> None:
+        """Update playback speed live -- same live-update mechanism as Loop."""
+        percent = self.playback_controls.speed_combo.itemData(index)
+        self.playback_settings.speed_percent = percent
+        logger.info("Playback speed set to %d%%", percent)
 
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
@@ -416,10 +537,10 @@ class MainWindow(QMainWindow):
 
         Advances the Timeline's playhead to the newly captured frame (the
         latest one) before refreshing Onion Skin -- otherwise the playhead
-        stays stuck at index 0 forever, and frames_before_current() can
-        never return anything, since nothing else moves it yet (Play
-        doesn't exist). Once Play is built, this remains correct: capture
-        always means "the new frame is now current."
+        stays stuck wherever it was, and frames_before_current() would not
+        reflect the frame just captured. This remains correct now that
+        Play also exists: capture always means "the new frame is now
+        current," regardless of where Play last left the playhead.
         A visible "frame captured" indicator (thumbnail appearing in the
         Timeline strip) belongs to the real Timeline UI built in Phase 6,
         not bolted onto this pass.
@@ -492,7 +613,27 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all five worker threads down cleanly before closing.
+        """Shut all six worker threads down cleanly before closing.
+
+        Sets self._shutting_down = True FIRST, before touching any thread.
+        This closes a real race: PlaybackController.playhead_advanced is a
+        queued cross-thread connection to _on_playback_playhead_advanced()
+        on THIS (main) thread. If Play is still running (e.g. Loop
+        enabled) when the window closes, one more tick can be emitted
+        before playback's own thread is told to stop further down this
+        method -- but Qt doesn't actually deliver that queued call until
+        the main thread's event loop resumes processing events, which
+        only happens AFTER this entire method returns (QThread.wait()
+        blocks the calling/main thread without pumping its event queue).
+        By the time that queued call is finally delivered,
+        onion_skin_controller has already been deleted -- its thread is
+        shut down earlier in this method, before playback's -- so
+        _refresh_onion_skin() emitting on it raised RuntimeError: Signal
+        source has been deleted. self._shutting_down, checked at the top
+        of _refresh_onion_skin(), makes that eventual call a safe no-op
+        instead, regardless of exactly when it's delivered relative to
+        thread teardown order -- so this fix doesn't depend on getting
+        that ordering exactly right.
 
         Without this, Qt logs a "QThread destroyed while running" warning
         and the thread is torn down abruptly rather than exiting its event
@@ -500,6 +641,8 @@ class MainWindow(QMainWindow):
         event loop via its finished signal, so each controller is cleaned
         up on the thread it actually belongs to.
         """
+        self._shutting_down = True
+
         self._camera_thread.finished.connect(self.camera_controller.deleteLater)
         self._camera_thread.quit()
         self._camera_thread.wait(2000)
@@ -519,6 +662,10 @@ class MainWindow(QMainWindow):
         self._onion_skin_thread.finished.connect(self.onion_skin_controller.deleteLater)
         self._onion_skin_thread.quit()
         self._onion_skin_thread.wait(2000)
+
+        self._playback_thread.finished.connect(self.playback_controller.deleteLater)
+        self._playback_thread.quit()
+        self._playback_thread.wait(2000)
 
         super().closeEvent(event)
 
