@@ -5,18 +5,24 @@ import json
 import pytest
 
 from framelabs.project.project import Frame, Project
-from framelabs.project.serializer import ProjectLoadError, ProjectSerializer
+from framelabs.project.serializer import (
+    CURRENT_VERSION,
+    ProjectLoadError,
+    ProjectSerializer,
+)
 
 
 def _make_project(project_path):
     return Project(
-        version=1,
+        version=CURRENT_VERSION,
         name="Robot Walk Cycle",
         fps=12,
         resolution=(6000, 4000),
         camera_model="Canon EOS R50",
         camera_lens="50mm",
-        frames=[Frame(number=1, file="images/000001.png")],
+        frames=[
+            Frame(number=1, file="images/000001.png", notes="First frame", marker=True)
+        ],
         project_path=project_path,
     )
 
@@ -36,12 +42,19 @@ def test_save_writes_expected_json_shape(tmp_path):
     ProjectSerializer.save(project)
     data = json.loads((tmp_path / "project.ffproj").read_text(encoding="utf-8"))
 
-    assert data["version"] == 1
+    assert data["version"] == CURRENT_VERSION
     assert data["name"] == "Robot Walk Cycle"
     assert data["fps"] == 12
     assert data["resolution"] == [6000, 4000]
     assert data["camera"] == {"model": "Canon EOS R50", "lens": "50mm"}
-    assert data["frames"] == [{"number": 1, "file": "images/000001.png"}]
+    assert data["frames"] == [
+        {
+            "number": 1,
+            "file": "images/000001.png",
+            "notes": "First frame",
+            "marker": True,
+        }
+    ]
 
 
 def test_save_without_project_path_raises_value_error():
@@ -88,3 +101,50 @@ def test_load_missing_required_field_raises_project_load_error(tmp_path):
 
     with pytest.raises(ProjectLoadError):
         ProjectSerializer.load(tmp_path)
+
+
+def test_load_v1_file_defaults_notes_and_marker(tmp_path):
+    """A pre-Feature-5 v1 file has no notes/marker keys on its frames at
+    all -- load() must default them rather than raising, since v1 is still
+    a supported version."""
+    (tmp_path / "project.ffproj").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "name": "Old Project",
+                "fps": 12,
+                "resolution": [1920, 1080],
+                "camera": {"model": None, "lens": None},
+                "frames": [{"number": 1, "file": "images/000001.png"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    project = ProjectSerializer.load(tmp_path)
+
+    assert project.frames[0].notes == ""
+    assert project.frames[0].marker is False
+
+
+def test_load_v1_file_upgrades_to_current_version_in_memory(tmp_path):
+    """Loading an old v1 file returns a Project already at
+    CURRENT_VERSION -- the next save() call persists it at the current
+    schema without any separate migration step."""
+    (tmp_path / "project.ffproj").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "name": "Old Project",
+                "fps": 12,
+                "resolution": [1920, 1080],
+                "camera": {"model": None, "lens": None},
+                "frames": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    project = ProjectSerializer.load(tmp_path)
+
+    assert project.version == CURRENT_VERSION

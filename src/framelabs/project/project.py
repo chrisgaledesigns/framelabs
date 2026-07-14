@@ -20,10 +20,16 @@ class Frame:
         number: The frame's position/number in the sequence.
         file: Path to the frame's image file, relative to the project
             root (e.g. "images/000001.png").
+        notes: Free-text note attached to this frame. Defaults to empty
+            string, matching Feature 5's spec (notes are optional).
+        marker: Whether this frame is flagged with a marker, per Feature 5.
+            Defaults to False.
     """
 
     number: int
     file: str
+    notes: str = ""
+    marker: bool = False
 
 
 @dataclass
