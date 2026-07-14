@@ -29,7 +29,7 @@ from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_controller import ProjectController
-from framelabs.ui.timeline_widget import PlaybackControls, TimelineStrip
+from framelabs.ui.timeline_widget import PlaybackControls, TimelineWidget
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         self._start_onion_skin_controller()
         self._start_playback_controller()
         self._wire_playback_controls()
+        self._wire_timeline_widget()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -80,6 +81,9 @@ class MainWindow(QMainWindow):
         self.capture_action.triggered.connect(self._on_capture)
 
         self.play_action = QAction("Play", self)
+        self.play_action.setShortcuts(
+            [QKeySequence(Qt.Key.Key_Return), QKeySequence(Qt.Key.Key_Enter)]
+        )
         self.play_action.triggered.connect(self._on_toggle_play)
 
         self.onion_action = QAction("Onion", self)
@@ -98,9 +102,27 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
 
         self.blender_action = QAction("Open in Blender", self)
+        self.blender_action.setShortcut(QKeySequence(Qt.Key.Key_B))
         self.blender_action.triggered.connect(
             lambda: logger.info("Open in Blender clicked")
         )
+
+        self.previous_frame_action = QAction("Previous Frame", self)
+        self.previous_frame_action.setShortcut(QKeySequence(Qt.Key.Key_Left))
+        self.previous_frame_action.triggered.connect(self._on_previous_frame)
+
+        self.next_frame_action = QAction("Next Frame", self)
+        self.next_frame_action.setShortcut(QKeySequence(Qt.Key.Key_Right))
+        self.next_frame_action.triggered.connect(self._on_next_frame)
+
+        # Per Feature 12, Left/Right have no menu home -- unlike every other
+        # shortcut above, which gets its shortcut "for free" by being added
+        # to a menu in _build_menu_bar(). A QAction not added to any
+        # menu/toolbar has no widget to inherit a shortcut context from, so
+        # addAction() registers it directly on the window itself, keeping
+        # the shortcut live with no visible menu entry.
+        self.addAction(self.previous_frame_action)
+        self.addAction(self.next_frame_action)
 
     def _build_menu_bar(self) -> None:
         """Construct the top menu bar, using the shared actions."""
@@ -150,14 +172,14 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 1)
 
-        self.timeline_strip = TimelineStrip()
+        self.timeline_widget = TimelineWidget()
         self.playback_controls = PlaybackControls()
 
         central_widget = QWidget()
         central_layout = QVBoxLayout(central_widget)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.addWidget(splitter, 1)
-        central_layout.addWidget(self.timeline_strip)
+        central_layout.addWidget(self.timeline_widget)
         central_layout.addWidget(self.playback_controls)
 
         self.setCentralWidget(central_widget)
@@ -305,6 +327,71 @@ class MainWindow(QMainWindow):
             self._on_speed_changed
         )
 
+    def _wire_timeline_widget(self) -> None:
+        """Connect the TimelineWidget to real timeline state.
+
+        TimelineWidget holds no Timeline/Project of its own (see its own
+        docstring) -- it only emits frame_selected with a raw index when a
+        thumbnail is clicked. MainWindow owns self.timeline and is
+        responsible for translating that index into an actual playhead
+        move via Timeline.go_to_index().
+        """
+        self.timeline_widget.frame_selected.connect(self._on_frame_selected)
+
+    def _on_frame_selected(self, index: int) -> None:
+        """React to a thumbnail click in the Timeline strip.
+
+        No-op if there's no active project/timeline yet -- same guard
+        pattern as _refresh_onion_skin(); TimelineWidget shouldn't be able
+        to emit a click with no timeline behind it, but this keeps the
+        handler safe regardless. Moves the playhead to the clicked frame's
+        index, then refreshes both Onion Skin and the Timeline strip
+        itself so the new selection border appears immediately.
+        """
+        if self.timeline is None:
+            return
+        self.timeline.go_to_index(index)
+        self._refresh_onion_skin()
+        self._move_timeline_playhead()
+
+    def _refresh_timeline_widget(self) -> None:
+        """Rebuild the Timeline strip to match the current project/timeline.
+
+        Rebuilds every thumbnail from scratch (disk read + QPixmap scale
+        per frame) -- only call this when the frame list itself has
+        changed (new project, opened project, capture succeeded). For a
+        playhead-only move, call _move_timeline_playhead() instead, which
+        is much cheaper and does no disk I/O -- critical during playback,
+        which can tick many times per second. No-op if there's no active
+        project/timeline yet -- same guard pattern as
+        _refresh_onion_skin(). Thumbnails live in project_path/
+        "thumbnails", per the project folder layout established in
+        Feature 1 and project.py's Project docstring.
+        """
+        if self.project is None or self.timeline is None:
+            return
+        thumbnails_dir = self.project.project_path / "thumbnails"
+        self.timeline_widget.refresh(
+            self.timeline.frames, thumbnails_dir, self.timeline.current_index
+        )
+
+    def _move_timeline_playhead(self) -> None:
+        """Move the Timeline strip's selection border to match the current
+        playhead, without rebuilding any thumbnails.
+
+        No-op if there's no active project/timeline yet -- same guard
+        pattern as _refresh_onion_skin(). Use this (not
+        _refresh_timeline_widget()) for every playhead-only change: arrow
+        keys, playback ticks, and thumbnail clicks. None of these change
+        the frame list, so rebuilding every thumbnail on each call would
+        mean repeated disk reads for no reason -- at playback speed this
+        was enough to visibly freeze the UI, which is exactly what the
+        Developer Handbook's "UI Never Blocks" principle rules out.
+        """
+        if self.project is None or self.timeline is None:
+            return
+        self.timeline_widget.set_current_index(self.timeline.current_index)
+
     def _refresh_onion_skin(self) -> None:
         """Ask the onion skin worker thread to reload overlay frames.
 
@@ -357,7 +444,16 @@ class MainWindow(QMainWindow):
             self._start_playback()
 
     def _start_playback(self) -> None:
-        """Begin playback from the current playhead position."""
+        """Begin playback from the current playhead position.
+
+        Pauses Live View polling first -- see LiveViewController's module
+        docstring for why both PlaybackController and LiveViewController
+        driving the same LiveViewWidget.show_frame() slot at once causes a
+        visible strobe between the live camera feed and whatever frame
+        Playback just set. Resumed in _reset_playback_ui(), which runs on
+        every path playback can stop (user-stopped or reached the end).
+        """
+        self.live_view_controller.pause_requested.emit()
         self.playback_settings.is_playing = True
         self.playback_controls.play_button.setText("Pause")
         self.playback_controller.start_requested.emit(
@@ -383,23 +479,59 @@ class MainWindow(QMainWindow):
         self._reset_playback_ui()
 
     def _reset_playback_ui(self) -> None:
-        """Reset the Play button back to its stopped state."""
+        """Reset the Play button back to its stopped state.
+
+        Resumes Live View polling, mirroring the pause in
+        _start_playback() -- runs on every path playback can stop
+        (_stop_playback()'s user-initiated stop, and
+        _on_playback_finished()'s reached-the-end stop), so the live feed
+        always comes back regardless of how playback ended.
+        """
         self.playback_settings.is_playing = False
         self.playback_controls.play_button.setText("Play")
+        self.live_view_controller.resume_requested.emit()
 
     def _on_playback_playhead_advanced(self) -> None:
-        """Keep Onion Skin in sync while Playback moves the same
-        Timeline.current_index Onion Skin reads from.
+        """Keep Onion Skin and the Timeline strip in sync while Playback
+        moves the same Timeline.current_index they both read from.
 
-        Without this, Onion Skin only ever refreshes on capture -- once
-        Play starts moving the playhead on its own, the "before" ghosted
-        frames would go stale and stop matching the frame actually on
-        screen. _refresh_onion_skin() already no-ops safely if Onion Skin
-        is currently disabled (OnionSkinController just emits empty
-        layers) OR if the window is shutting down, so this is safe to call
-        unconditionally on every tick.
+        Without this, Onion Skin and the Timeline strip's selection border
+        would only ever refresh on capture or a manual click -- once Play
+        starts moving the playhead on its own, both would go stale and
+        stop matching the frame actually on screen.
+        _refresh_onion_skin()/_refresh_timeline_widget() already no-op
+        safely if disabled/empty or if the window is shutting down, so
+        this is safe to call unconditionally on every tick.
         """
         self._refresh_onion_skin()
+        self._move_timeline_playhead()
+
+    def _on_previous_frame(self) -> None:
+        """Step the playhead back one frame, per Feature 12's Left Arrow.
+
+        No-op with a log line if there's no active project yet -- same
+        guard pattern as _on_capture()/_on_toggle_play(). Refreshes Onion
+        Skin and the Timeline strip afterward since the playhead moved,
+        the same way _on_playback_playhead_advanced() does.
+        """
+        if self.timeline is None:
+            logger.warning("Previous frame requested with no active project; ignoring")
+            return
+        self.timeline.previous_frame()
+        self._refresh_onion_skin()
+        self._move_timeline_playhead()
+
+    def _on_next_frame(self) -> None:
+        """Step the playhead forward one frame, per Feature 12's Right Arrow.
+
+        Same guard and refresh calls as _on_previous_frame().
+        """
+        if self.timeline is None:
+            logger.warning("Next frame requested with no active project; ignoring")
+            return
+        self.timeline.next_frame()
+        self._refresh_onion_skin()
+        self._move_timeline_playhead()
 
     def _on_loop_toggled(self, checked: bool) -> None:
         """Update Loop live.
@@ -425,7 +557,9 @@ class MainWindow(QMainWindow):
         dialog, nothing changes. A fresh Timeline is created over the new
         project's frames at the same time -- Timeline holds a live
         reference to project.frames, so no further sync is needed as
-        captures happen.
+        captures happen. The Timeline strip is refreshed here too, so a
+        brand-new (empty) project correctly clears out whatever a
+        previously-open project may have left displayed.
         """
         dialog = NewProjectDialog(self)
         if dialog.exec():
@@ -434,6 +568,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
             self._refresh_onion_skin()
+            self._refresh_timeline_widget()
 
     def _on_open_project(self) -> None:
         """Open a folder picker and request a load on the worker thread.
@@ -479,13 +614,16 @@ class MainWindow(QMainWindow):
 
         A fresh Timeline is created over the opened project's frames at
         the same time -- see _on_new_project for why this needs no
-        further manual sync.
+        further manual sync. The Timeline strip is refreshed here too, so
+        opening a project immediately shows its real frame thumbnails
+        rather than whatever was left over from a previous project.
         """
         self.project = project
         self.timeline = Timeline(project)
         self.setWindowTitle(f"FrameLabs — {project.name}")
         logger.info("Project opened: %s", project.name)
         self._refresh_onion_skin()
+        self._refresh_timeline_widget()
 
     def _show_missing_frames_dialog(
         self, project: Project, missing_files: list
@@ -569,15 +707,16 @@ class MainWindow(QMainWindow):
         stays stuck wherever it was, and frames_before_current() would not
         reflect the frame just captured. This remains correct now that
         Play also exists: capture always means "the new frame is now
-        current," regardless of where Play last left the playhead.
-        A visible "frame captured" indicator (thumbnail appearing in the
-        Timeline strip) belongs to the real Timeline UI built in Phase 6,
-        not bolted onto this pass.
+        current," regardless of where Play last left the playhead. The
+        Timeline strip is refreshed last so the newly-captured thumbnail
+        appears with its selection border in the same place the playhead
+        just moved to.
         """
         logger.info("Capture succeeded: frame %d", frame_number)
         if self.timeline is not None:
             self.timeline.go_to_index(len(self.timeline) - 1)
         self._refresh_onion_skin()
+        self._refresh_timeline_widget()
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.

@@ -240,3 +240,49 @@ def test_widget_frame_selected_signal_carries_clicked_thumbnail_index(qtbot, tmp
         qtbot.mouseClick(second_thumbnail, Qt.MouseButton.LeftButton)
 
     assert blocker.args == [1]
+
+
+def test_set_current_index_moves_selection_without_rebuilding(qtbot, tmp_path):
+    """A playhead-only move must update the border without recreating any
+    thumbnail widget -- the whole point of this method vs. refresh()."""
+    widget = TimelineWidget()
+    qtbot.addWidget(widget)
+    frames = [
+        Frame(number=1, file="images/000001.png"),
+        Frame(number=2, file="images/000002.png"),
+    ]
+    for frame in frames:
+        _write_real_thumbnail(tmp_path, frame.number)
+    widget.refresh(frames, tmp_path, current_index=0)
+    thumbnails_before = list(widget._strip.findChildren(FrameThumbnail))
+
+    widget.set_current_index(1)
+
+    thumbnails_after = list(widget._strip.findChildren(FrameThumbnail))
+    assert thumbnails_before == thumbnails_after
+
+    first = next(t for t in thumbnails_after if t._index == 0)
+    second = next(t for t in thumbnails_after if t._index == 1)
+    assert f"0px solid {SELECTION_BORDER_COLOR}" in _all_style(first)
+    assert f"3px solid {SELECTION_BORDER_COLOR}" in _all_style(second)
+
+
+def test_set_current_index_preserves_marker_border(qtbot, tmp_path):
+    """Moving the selection border must not disturb an independent marker
+    border on the same or another thumbnail."""
+    widget = TimelineWidget()
+    qtbot.addWidget(widget)
+    frames = [
+        Frame(number=1, file="images/000001.png", marker=True),
+        Frame(number=2, file="images/000002.png"),
+    ]
+    for frame in frames:
+        _write_real_thumbnail(tmp_path, frame.number)
+    widget.refresh(frames, tmp_path, current_index=0)
+
+    widget.set_current_index(1)
+
+    marked = next(
+        t for t in widget._strip.findChildren(FrameThumbnail) if t._index == 0
+    )
+    assert MARKER_BORDER_COLOR in _all_style(marked)
