@@ -44,12 +44,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import cv2
+import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from framelabs.camera.camera_interface import CameraError
 from framelabs.camera.camera_manager import CameraManager
 from framelabs.core.event_bus import EventBus
 from framelabs.core.logger import get_logger
+from framelabs.image_processing.histogram import compute_luminance_histogram
 
 logger = get_logger(__name__)
 
@@ -65,6 +68,13 @@ class LiveViewController(QObject):
     """
 
     frame_ready = Signal(bytes)
+
+    # Emitted alongside frame_ready with a 256-bin normalized luminance
+    # histogram (see image_processing/histogram.py), for the Inspector
+    # panel's live histogram strip. Computed inline on this controller's
+    # own worker thread -- see _compute_and_emit_histogram()'s docstring
+    # for why no additional QThread is needed for this.
+    histogram_ready = Signal(np.ndarray)
 
     # Public -- MainWindow connects to these directly (from the main
     # thread) to pause/resume preview polling during Playback. See module
@@ -173,3 +183,38 @@ class LiveViewController(QObject):
             logger.warning("Preview frame grab failed, skipping: %s", exc)
             return
         self.frame_ready.emit(frame_bytes)
+        self._compute_and_emit_histogram(frame_bytes)
+
+    def _compute_and_emit_histogram(self, frame_bytes: bytes) -> None:
+        """Decode the same preview bytes a second time, as a raw array,
+        and emit a luminance histogram for the Inspector panel.
+
+        This is a deliberate second decode of the same JPEG bytes QImage
+        already decodes for display in live_view_widget.py -- not an
+        oversight. CameraInterface's contract (read_preview_frame()
+        returns bytes only) stays unchanged for every backend, per the
+        Developer Handbook's "every backend implements the same
+        interface" rule, rather than threading a raw array through
+        webcam/gphoto/libcamera just to avoid this one extra decode. Both
+        the decode and the histogram computation run here, off the main
+        thread, so this never affects UI responsiveness -- no additional
+        QThread is needed since this controller's worker thread already
+        exists for frame polling.
+
+        Any failure here (a bad decode, an unexpected shape) is logged
+        and skipped, never raised -- the live preview itself
+        (frame_ready, above) must never be blocked or interrupted by a
+        histogram problem, same non-critical-failure precedent as
+        capture's thumbnail generation.
+        """
+        try:
+            encoded = np.frombuffer(frame_bytes, dtype=np.uint8)
+            bgr_frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+            if bgr_frame is None:
+                raise ValueError("cv2.imdecode returned None")
+            rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+            histogram = compute_luminance_histogram(rgb_frame)
+        except Exception as exc:
+            logger.warning("Histogram computation failed, skipping: %s", exc)
+            return
+        self.histogram_ready.emit(histogram)
