@@ -4,9 +4,11 @@ TimelineWidget is the real Feature 5 frame-thumbnail strip: it renders one
 FrameThumbnail per Frame in a Timeline, supports click-to-select, and shows
 marker/selection state as independent, stackable colored borders. It holds
 no Timeline of its own -- MainWindow calls refresh() whenever the active
-Timeline's contents or playhead change (new project, opened project,
-capture succeeded), consistent with how the rest of the UI layer stays
-"dumb" per the Developer Handbook.
+Timeline's frame list changes (new project, opened project, capture
+succeeded), and calls the cheaper set_current_index() whenever only the
+playhead moves (arrow keys, playback ticks, thumbnail clicks) so that
+moving the playhead never rebuilds every thumbnail from disk, consistent
+with the Developer Handbook's "UI Never Blocks" principle.
 
 PlaybackControls is unchanged from the Phase 5 skeleton -- still real,
 wired widgets for Feature 7 (Play/Pause, Loop, speed), driven externally by
@@ -89,12 +91,12 @@ class FrameThumbnail(QFrame):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(2, 2, 2, 2)
 
-        selection_frame = QFrame()
+        self._selection_frame = QFrame()
         selection_width = SELECTION_BORDER_WIDTH if selected else 0
-        selection_frame.setStyleSheet(
+        self._selection_frame.setStyleSheet(
             f"QFrame {{ border: {selection_width}px solid {SELECTION_BORDER_COLOR}; }}"
         )
-        selection_layout = QVBoxLayout(selection_frame)
+        selection_layout = QVBoxLayout(self._selection_frame)
         selection_layout.setContentsMargins(2, 2, 2, 2)
 
         image_label = QLabel()
@@ -118,12 +120,25 @@ class FrameThumbnail(QFrame):
 
         selection_layout.addWidget(image_label)
         selection_layout.addWidget(number_label)
-        outer_layout.addWidget(selection_frame)
+        outer_layout.addWidget(self._selection_frame)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override name)
         """Emit `clicked` with this thumbnail's timeline index."""
         self.clicked.emit(self._index)
         super().mousePressEvent(event)
+
+    def set_selected(self, selected: bool) -> None:
+        """Toggle the selection border without rebuilding the thumbnail.
+
+        Used by TimelineWidget.set_current_index() so that a playhead-only
+        move (arrow keys, playback ticks, a thumbnail click) never tears
+        down and recreates thumbnails or re-reads any image off disk --
+        only the border style changes.
+        """
+        width = SELECTION_BORDER_WIDTH if selected else 0
+        self._selection_frame.setStyleSheet(
+            f"QFrame {{ border: {width}px solid {SELECTION_BORDER_COLOR}; }}"
+        )
 
 
 class TimelineWidget(QScrollArea):
@@ -131,7 +146,8 @@ class TimelineWidget(QScrollArea):
 
     Horizontally scrollable. Holds no Timeline/Project of its own --
     MainWindow calls refresh() with the current frames, thumbnails
-    folder, and playhead index whenever any of those change.
+    folder, and playhead index whenever the frame list itself changes, and
+    calls set_current_index() whenever only the playhead moves.
     """
 
     frame_selected = Signal(int)
@@ -157,6 +173,12 @@ class TimelineWidget(QScrollArea):
     ) -> None:
         """Rebuild the strip to match the given frames and playhead.
 
+        Tears down and recreates every thumbnail, including a disk read
+        and QPixmap scale per frame -- only call this when the frame list
+        itself has changed (new project, opened project, capture
+        succeeded). For a playhead-only move, call set_current_index()
+        instead, which is much cheaper and does no disk I/O.
+
         Args:
             frames: Frames in sequence order (Timeline.frames).
             thumbnails_dir: The active project's thumbnails/ folder.
@@ -179,6 +201,19 @@ class TimelineWidget(QScrollArea):
             )
             thumbnail.clicked.connect(self.frame_selected.emit)
             self._strip_layout.addWidget(thumbnail)
+
+    def set_current_index(self, current_index: int) -> None:
+        """Move the selection border to match a playhead-only change.
+
+        Cheap alternative to refresh() for arrow-key steps, playback
+        ticks, and thumbnail clicks -- none of these change the frame
+        list, only which thumbnail is selected, so no thumbnail needs to
+        be recreated or re-read from disk. Per the Developer Handbook's
+        "UI Never Blocks" principle, this matters most during playback,
+        where the playhead can move many times per second.
+        """
+        for thumbnail in self._strip.findChildren(FrameThumbnail):
+            thumbnail.set_selected(thumbnail._index == current_index)
 
 
 class PlaybackControls(QWidget):
