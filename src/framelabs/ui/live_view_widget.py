@@ -7,18 +7,21 @@ Displays whatever frame it's given -- either a live camera preview frame
 frame via zValue, each rendered at partial opacity so the current frame
 remains visible beneath the ghosted layers -- the current frame's own
 pixmap is fully opaque, so an onion layer stacked below it would be
-entirely hidden regardless of its own opacity. Remaining overlays (safe
-areas, histogram) are still to come as later layers on top of this core
-display.
+entirely hidden regardless of its own opacity. Safe area guides (also
+Feature 3) are two static outline rectangles -- 90% action-safe, 80%
+title-safe -- stacked above even the onion layers, so they're always
+visible as a reference overlay regardless of what else is showing.
+Histogram overlay is still to come as a later addition on top of this.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsColorizeEffect,
     QGraphicsPixmapItem,
+    QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
 )
@@ -31,10 +34,24 @@ ZOOM_FACTOR_PER_STEP = 1.15
 # the current frame stays visible underneath the ghosted layers.
 CURRENT_FRAME_Z_VALUE = 0.0
 
+# Safe area guides always render above every onion layer, however many
+# there are -- an arbitrarily high zValue guarantees this without needing
+# to know the current onion layer count.
+SAFE_AREA_Z_VALUE = 1000.0
+
+# Feature Spec Feature 3: safe area guide ratios (fraction of frame
+# width/height) -- broadcast-standard 90% action-safe, 80% title-safe.
+ACTION_SAFE_RATIO = 0.90
+TITLE_SAFE_RATIO = 0.80
+
+# Industry-standard safe area guide colors.
+ACTION_SAFE_COLOR = QColor("yellow")
+TITLE_SAFE_COLOR = QColor("red")
+
 
 class LiveViewWidget(QGraphicsView):
-    """Displays a live or saved frame with zoom, pan, fit-to-view, and
-    Onion Skin overlays.
+    """Displays a live or saved frame with zoom, pan, fit-to-view, Onion
+    Skin overlays, and Safe Area guides.
 
     Zoom: mouse wheel, centered on the cursor.
     Pan: middle mouse button drag.
@@ -45,7 +62,8 @@ class LiveViewWidget(QGraphicsView):
     """
 
     def __init__(self) -> None:
-        """Build the view, its scene, and the (initially empty) pixmap item."""
+        """Build the view, its scene, the pixmap item, and the (initially
+        hidden) safe area guide items."""
         super().__init__()
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -55,6 +73,9 @@ class LiveViewWidget(QGraphicsView):
         self._scene.addItem(self._pixmap_item)
 
         self._onion_items: list[QGraphicsPixmapItem] = []
+
+        self._action_safe_item = self._make_safe_area_item(ACTION_SAFE_COLOR)
+        self._title_safe_item = self._make_safe_area_item(TITLE_SAFE_COLOR)
 
         self._has_frame = False
         self._user_has_zoomed = False
@@ -67,6 +88,24 @@ class LiveViewWidget(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+    def _make_safe_area_item(self, color: QColor) -> QGraphicsRectItem:
+        """Build one hidden, unfilled safe-area guide rectangle.
+
+        A cosmetic pen (setCosmetic(True)) keeps the outline a constant
+        pixel width on screen regardless of the view's current zoom level,
+        so the guide stays a thin, legible reference line whether the user
+        is zoomed way in or fit-to-view.
+        """
+        item = QGraphicsRectItem()
+        pen = QPen(color)
+        pen.setWidth(2)
+        pen.setCosmetic(True)
+        item.setPen(pen)
+        item.setZValue(SAFE_AREA_Z_VALUE)
+        item.setVisible(False)
+        self._scene.addItem(item)
+        return item
 
     def show_frame(self, image_bytes: bytes) -> None:
         """Decode and display a new frame.
@@ -83,12 +122,49 @@ class LiveViewWidget(QGraphicsView):
         pixmap = QPixmap.fromImage(image)
         self._pixmap_item.setPixmap(pixmap)
         self._scene.setSceneRect(QRectF(pixmap.rect()))
+        self._update_safe_area_geometry(pixmap.rect())
 
         was_first_frame = not self._has_frame
         self._has_frame = True
 
         if was_first_frame or not self._user_has_zoomed:
             self.fit_to_view()
+
+    def _update_safe_area_geometry(self, frame_rect) -> None:
+        """Recompute both safe area guides' geometry for the current frame
+        size.
+
+        Each guide is centered within the frame, sized to its ratio of the
+        frame's width and height -- e.g. 90% action-safe leaves a 5% margin
+        on every side. Recalculated on every new frame rather than cached,
+        since a project's resolution -- while fixed after creation -- isn't
+        known until the first frame arrives.
+        """
+        width = frame_rect.width()
+        height = frame_rect.height()
+        self._action_safe_item.setRect(
+            self._centered_rect(width, height, ACTION_SAFE_RATIO)
+        )
+        self._title_safe_item.setRect(
+            self._centered_rect(width, height, TITLE_SAFE_RATIO)
+        )
+
+    @staticmethod
+    def _centered_rect(width: float, height: float, ratio: float) -> QRectF:
+        """Return a rectangle at `ratio` of width/height, centered in the frame."""
+        margin_x = width * (1 - ratio) / 2
+        margin_y = height * (1 - ratio) / 2
+        return QRectF(margin_x, margin_y, width - 2 * margin_x, height - 2 * margin_y)
+
+    def set_safe_areas_visible(self, enabled: bool) -> None:
+        """Show or hide both safe area guides.
+
+        Args:
+            enabled: True to show both action-safe and title-safe guides,
+                False to hide them.
+        """
+        self._action_safe_item.setVisible(enabled)
+        self._title_safe_item.setVisible(enabled)
 
     def set_onion_layers(
         self, before_layers: list[tuple[bytes, float, str]], after_layers: list
@@ -111,6 +187,8 @@ class LiveViewWidget(QGraphicsView):
         regardless of its own opacity. Among onion layers themselves, the
         nearest frame on each side sits closest to the current frame's
         zValue, with further frames stacked progressively above that.
+        Safe area guides (SAFE_AREA_Z_VALUE) always render above every
+        onion layer, however many there are.
         """
         self._clear_onion_layers()
         self._add_onion_layers(before_layers)

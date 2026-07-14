@@ -87,6 +87,10 @@ class MainWindow(QMainWindow):
         self.onion_action.setShortcut(QKeySequence(Qt.Key.Key_O))
         self.onion_action.triggered.connect(self._on_toggle_onion_skin)
 
+        self.safe_areas_action = QAction("Safe Areas", self)
+        self.safe_areas_action.setCheckable(True)
+        self.safe_areas_action.triggered.connect(self._on_toggle_safe_areas)
+
         self.camera_action = QAction("Rescan", self)
         self.camera_action.triggered.connect(self._on_rescan_camera)
 
@@ -112,6 +116,7 @@ class MainWindow(QMainWindow):
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)
         capture_menu.addAction(self.onion_action)
+        capture_menu.addAction(self.safe_areas_action)
 
         playback_menu = menu_bar.addMenu("&Playback")
         playback_menu.addAction(self.play_action)
@@ -312,6 +317,21 @@ class MainWindow(QMainWindow):
         self.onion_settings.enabled = checked
         logger.info("Onion Skin %s", "enabled" if checked else "disabled")
         self._refresh_onion_skin()
+
+    def _on_toggle_safe_areas(self, checked: bool) -> None:
+        """Turn the Safe Area guides on/off.
+
+        Unlike Onion Skin, this needs no worker-thread signal or refresh
+        call -- the guides are pure UI geometry that live_view_widget
+        already recomputes for whatever frame is currently on screen (see
+        LiveViewWidget._update_safe_area_geometry), so toggling visibility
+        is a direct, same-thread call: live_view_widget is never
+        moveToThread()'d, and this handler itself runs on the main thread
+        (menu actions always fire there), so no cross-thread indirection
+        is needed here.
+        """
+        self.live_view_widget.set_safe_areas_visible(checked)
+        logger.info("Safe Areas %s", "enabled" if checked else "disabled")
 
     def _on_toggle_play(self) -> None:
         """Start or stop playback, per Feature 7.
