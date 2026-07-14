@@ -231,6 +231,12 @@ class MainWindow(QMainWindow):
         contend with camera scanning, capture, or project save/load.
         Shares the SAME CameraManager instance camera_controller owns, so
         it reflects whatever camera is actually connected.
+
+        histogram_ready is connected the same direct way as frame_ready --
+        both are Qt Signals originating on this controller's worker
+        thread, so Qt's queued-connection machinery already marshals each
+        call safely onto the receiving widget's own (main) thread. No
+        additional indirection is needed for either.
         """
         self._live_view_thread = QThread(self)
         self.live_view_controller = LiveViewController(
@@ -240,6 +246,9 @@ class MainWindow(QMainWindow):
 
         self._live_view_thread.started.connect(self.live_view_controller.start)
         self.live_view_controller.frame_ready.connect(self.live_view_widget.show_frame)
+        self.live_view_controller.histogram_ready.connect(
+            self.inspector_panel.histogram_widget.update_histogram
+        )
 
         self._live_view_thread.start()
 

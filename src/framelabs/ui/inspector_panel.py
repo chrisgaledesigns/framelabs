@@ -13,9 +13,16 @@ The Camera field also doubles as the live connection-status display
 is connected) — driven by CameraController via MainWindow, not by this
 widget itself, since InspectorPanel should not know anything about
 threads or camera hardware.
+
+The Histogram strip at the bottom is likewise a dumb display widget --
+MainWindow connects LiveViewController.histogram_ready directly to
+self.histogram_widget.update_histogram(), same direct-connection pattern
+already used for frame_ready -> live_view_widget.show_frame.
 """
 
 from PySide6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
+
+from framelabs.ui.histogram_widget import HistogramWidget
 
 
 class InspectorPanel(QWidget):
@@ -59,6 +66,9 @@ class InspectorPanel(QWidget):
         self.resolution_field = QLineEdit()
         self.resolution_field.setPlaceholderText("e.g. 1920x1080")
         layout.addRow("Resolution", self.resolution_field)
+
+        self.histogram_widget = HistogramWidget()
+        layout.addRow("Histogram", self.histogram_widget)
 
     def set_camera_status(self, text: str) -> None:
         """Update the Camera field to reflect current connection status."""
