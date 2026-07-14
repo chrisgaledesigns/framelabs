@@ -88,6 +88,7 @@ class CaptureController(QObject):
         never mistaken for the generic "Capture Failed" case.
         """
         try:
+            logger.info("Capture started")
             frame = capture_frame(project, self._camera_manager, self._event_bus)
         except DiskFullServiceError as exc:
             logger.error("Capture aborted, disk full: %s", exc)
