@@ -17,6 +17,8 @@ this codebase's threading code.
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 from framelabs.camera.camera_interface import CameraError
 from framelabs.ui.live_view_controller import PREVIEW_INTERVAL_MS, LiveViewController
 
@@ -163,3 +165,96 @@ def test_read_frame_swallows_camera_error_and_does_not_emit():
     controller._read_frame()  # should not raise
 
     frame_slot.assert_not_called()
+
+
+@patch("framelabs.ui.live_view_controller.compute_luminance_histogram")
+@patch("framelabs.ui.live_view_controller.cv2")
+def test_read_frame_emits_histogram_on_success(mock_cv2, mock_compute_histogram):
+    """A successful grab should decode the frame (BGR->RGB) and emit
+    histogram_ready with the computed luminance histogram."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.capture_in_progress = False
+    mock_manager.read_preview_frame.return_value = b"fake-jpeg-bytes"
+
+    fake_bgr = MagicMock()
+    fake_rgb = MagicMock()
+    mock_cv2.imdecode.return_value = fake_bgr
+    mock_cv2.cvtColor.return_value = fake_rgb
+    fake_histogram = np.zeros(256)
+    mock_compute_histogram.return_value = fake_histogram
+
+    histogram_slot = MagicMock()
+    controller.histogram_ready.connect(histogram_slot)
+
+    controller._read_frame()
+
+    mock_cv2.cvtColor.assert_called_once_with(fake_bgr, mock_cv2.COLOR_BGR2RGB)
+    mock_compute_histogram.assert_called_once_with(fake_rgb)
+    histogram_slot.assert_called_once()
+    emitted_histogram = histogram_slot.call_args[0][0]
+    assert np.array_equal(emitted_histogram, fake_histogram)
+
+
+@patch("framelabs.ui.live_view_controller.compute_luminance_histogram")
+@patch("framelabs.ui.live_view_controller.cv2")
+def test_read_frame_decode_failure_still_emits_frame_not_histogram(
+    mock_cv2, mock_compute_histogram
+):
+    """If cv2.imdecode fails to decode the preview bytes (returns None),
+    frame_ready should still fire -- live preview must never break -- but
+    histogram_ready should not."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.capture_in_progress = False
+    mock_manager.read_preview_frame.return_value = b"corrupt-bytes"
+    mock_cv2.imdecode.return_value = None
+
+    frame_slot = MagicMock()
+    histogram_slot = MagicMock()
+    controller.frame_ready.connect(frame_slot)
+    controller.histogram_ready.connect(histogram_slot)
+
+    controller._read_frame()  # should not raise
+
+    frame_slot.assert_called_once_with(b"corrupt-bytes")
+    histogram_slot.assert_not_called()
+    mock_compute_histogram.assert_not_called()
+
+
+@patch("framelabs.ui.live_view_controller.compute_luminance_histogram")
+@patch("framelabs.ui.live_view_controller.cv2")
+def test_read_frame_histogram_compute_failure_still_emits_frame_not_histogram(
+    mock_cv2, mock_compute_histogram
+):
+    """If compute_luminance_histogram() itself raises, frame_ready should
+    still fire, and histogram_ready should not."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.capture_in_progress = False
+    mock_manager.read_preview_frame.return_value = b"fake-jpeg-bytes"
+    mock_cv2.imdecode.return_value = MagicMock()
+    mock_cv2.cvtColor.return_value = MagicMock()
+    mock_compute_histogram.side_effect = ValueError("bad shape")
+
+    frame_slot = MagicMock()
+    histogram_slot = MagicMock()
+    controller.frame_ready.connect(frame_slot)
+    controller.histogram_ready.connect(histogram_slot)
+
+    controller._read_frame()  # should not raise
+
+    frame_slot.assert_called_once_with(b"fake-jpeg-bytes")
+    histogram_slot.assert_not_called()
+
+
+def test_read_frame_skips_histogram_when_capture_in_progress():
+    """When a capture is in flight, _read_frame() should skip entirely --
+    no preview read, no histogram attempt."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.capture_in_progress = True
+
+    histogram_slot = MagicMock()
+    controller.histogram_ready.connect(histogram_slot)
+
+    controller._read_frame()
+
+    mock_manager.read_preview_frame.assert_not_called()
+    histogram_slot.assert_not_called()
