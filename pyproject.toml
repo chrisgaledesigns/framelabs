@@ -28,6 +28,7 @@ dev = [
     "ruff",
     "isort",
     "pytest",
+    "pytest-qt",
     "pytest-cov",
 ]
 
