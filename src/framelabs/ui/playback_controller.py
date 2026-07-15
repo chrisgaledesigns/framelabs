@@ -115,13 +115,21 @@ class PlaybackController(QObject):
         """Advance the playhead by one frame and emit it for display.
 
         At the last frame: loops back to the first frame if
-        settings.loop is enabled, otherwise stops the timer and emits
-        playback_finished so the UI can reset its Play button. Recomputes
-        the timer interval from settings every tick (not just at start),
-        so a live speed change -- settings is the same shared object the
-        whole time, mutated directly from the main thread -- takes effect
-        on the very next frame rather than only after Play is stopped and
-        restarted.
+        settings.loop is enabled, otherwise stops the timer, resets the
+        playhead back to frame 0, and emits playback_finished so the UI
+        can reset its Play button. Resetting to frame 0 on a non-looping
+        finish (rather than leaving the playhead parked on the last
+        frame) means the timeline lands back on frame 1 and is
+        immediately ready to play again without the user manually
+        reselecting a starting frame. playhead_advanced is emitted for
+        this reset the same as any other playhead move, so MainWindow's
+        existing _on_playback_playhead_advanced() naturally refreshes
+        Onion Skin and the Timeline widget's selection border to match --
+        no separate signal needed. Recomputes the timer interval from
+        settings every tick (not just at start), so a live speed change
+        -- settings is the same shared object the whole time, mutated
+        directly from the main thread -- takes effect on the very next
+        frame rather than only after Play is stopped and restarted.
         """
         if self._timeline is None or self._settings is None:
             return
@@ -141,7 +149,9 @@ class PlaybackController(QObject):
                 self._timeline.go_to_index(0)
             else:
                 self._handle_stop_requested()
+                self._timeline.go_to_index(0)
                 self.playback_finished.emit()
+                self.playhead_advanced.emit()
                 return
         else:
             self._timeline.next_frame()
