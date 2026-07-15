@@ -99,6 +99,13 @@ def test_advance_not_at_end_advances_playhead_and_emits_frame(tmp_path):
 
 
 def test_advance_at_end_without_loop_stops_and_emits_finished(tmp_path):
+    """Reaching the end with Loop off should stop playback AND reset the
+    playhead back to frame 0, so the sequence is immediately ready to play
+    again without the user manually reselecting a starting frame.
+    playhead_advanced must fire alongside playback_finished so MainWindow's
+    existing handler refreshes the Timeline widget's selection border to
+    match frame 0.
+    """
     project = _make_project(tmp_path, [1, 2], fps=12)
     timeline = Timeline(project)
     timeline.go_to_index(1)  # already at the last frame
@@ -109,15 +116,18 @@ def test_advance_at_end_without_loop_stops_and_emits_finished(tmp_path):
 
     finished = MagicMock()
     frame_ready = MagicMock()
+    playhead_advanced = MagicMock()
     controller.playback_finished.connect(finished)
     controller.frame_ready.connect(frame_ready)
+    controller.playhead_advanced.connect(playhead_advanced)
 
     controller._advance()
 
     finished.assert_called_once()
+    playhead_advanced.assert_called_once()
     frame_ready.assert_not_called()
     assert not controller._timer.isActive()
-    assert timeline.current_index == 1
+    assert timeline.current_index == 0
 
 
 def test_advance_at_end_with_loop_wraps_to_start(tmp_path):
