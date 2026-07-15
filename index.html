@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FrameLabs — Open source stop-motion software made for Blender</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:        #12151C;
+    --panel:     #1A1F29;
+    --panel-2:   #1F2531;
+    --border:    #2A3140;
+    --text:      #EDEFF4;
+    --muted:     #8A93A6;
+    --teal:      #4FD8C4;
+    --teal-dim:  #2C6E64;
+    --amber:     #F2B84B;
+    --amber-dim: #6B5426;
+    --slate:     #38414F;
+    --slate-line:#2A3140;
+    --disp: 'Space Grotesk', 'Arial Narrow', Arial, sans-serif;
+    --body: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    --mono: 'IBM Plex Mono', 'Liberation Mono', 'DejaVu Sans Mono', monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a{ color:inherit; text-decoration:none; }
+  ul{ list-style:none; }
+  .mono{ font-family: var(--mono); }
+  img,svg{ max-width:100%; }
+  ::selection{ background: var(--teal-dim); color: var(--text); }
+
+  .container{ width:100%; max-width:1160px; margin:0 auto; padding:0 32px; }
+  section{ padding: 88px 0; }
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2.5px;
+    color: var(--teal);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{
+    content:""; width:16px; height:1px; background:var(--teal); display:inline-block;
+  }
+  h1,h2,h3{ font-family: var(--disp); font-weight:700; letter-spacing:-0.02em; }
+  h2{ font-size: 32px; margin-bottom: 14px; }
+  .section-sub{ color: var(--muted); font-size:15px; max-width:560px; margin-bottom:48px; }
+  .head-row{ display:flex; justify-content:space-between; align-items:flex-end; gap:24px; flex-wrap:wrap; }
+
+  /* ---------- buttons & badges ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family: var(--body); font-weight:600; font-size:14px;
+    padding: 12px 22px; border-radius: 7px;
+    border:1px solid transparent; cursor:pointer;
+    transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    white-space:nowrap;
+  }
+  .btn-primary{ background: var(--teal); color:#08211D; }
+  .btn-primary:hover{ transform: translateY(-1px); background:#63e0cf; }
+  .btn-outline{ background:transparent; border-color: var(--border); color: var(--text); }
+  .btn-outline:hover{ border-color: var(--teal); color: var(--teal); }
+  .btn-sm{ padding:8px 14px; font-size:12.5px; border-radius:6px; }
+  .btn[disabled]{ opacity:.45; cursor:not-allowed; }
+  .btn[disabled]:hover{ transform:none; background:var(--teal); }
+
+  .pill{
+    font-family: var(--mono); font-size:10px; letter-spacing:.5px;
+    padding:3px 9px; border-radius:20px; display:inline-block;
+  }
+  .pill-done{ background: var(--teal-dim); color: var(--teal); }
+  .pill-mid{ background: var(--amber-dim); color: var(--amber); }
+  .pill-not{ background: var(--panel-2); color: var(--muted); border:1px solid var(--border); }
+
+  /* ---------- nav ---------- */
+  .nav{
+    position:sticky; top:0; z-index:100;
+    background: rgba(18,21,28,.86); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner{
+    max-width:1160px; margin:0 auto; padding: 16px 32px;
+    display:flex; align-items:center; gap:28px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; margin-right:auto; }
+  .brand-name{ font-family: var(--disp); font-weight:700; font-size:18px; letter-spacing:-0.01em; }
+  .brand-name b{ color:var(--teal); }
+  .nav-links{ display:flex; align-items:center; gap:28px; }
+  .nav-links a{
+    font-size:13.5px; color: var(--muted); font-weight:500;
+    padding-bottom:2px; border-bottom:1px solid transparent;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .nav-links a:hover, .nav-links a.active{ color: var(--text); }
+  .nav-links a.active{ border-color: var(--teal); color:var(--teal); }
+  .nav-gh{ display:flex; align-items:center; gap:6px; }
+  .nav-toggle{
+    display:none; background:none; border:1px solid var(--border); color:var(--text);
+    width:38px; height:38px; border-radius:7px; font-size:16px; cursor:pointer;
+  }
+
+  /* ---------- routing ---------- */
+  .site-page{ display:none; }
+  .site-page.active{ display:block; animation: fadein .35s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ================= HOME ================= */
+  .hero{
+    padding: 88px 0 64px 0;
+  }
+  .hero.hero-solo{ max-width:720px; margin:0 auto; text-align:center; }
+  .hero h1{ font-size: 50px; line-height:1.1; margin-bottom:20px; }
+  .hero h1 .accent{ color: var(--teal); }
+  .hero p.lead{ color: var(--muted); font-size:16.5px; max-width:560px; margin:0 auto 32px auto; line-height:1.65; }
+  .hero-ctas{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:36px; justify-content:center; }
+  .hero-meta{
+    display:flex; gap:26px; flex-wrap:wrap; justify-content:center;
+    font-family: var(--mono); font-size:11.5px; color: var(--muted);
+  }
+  .hero-meta span b{ color: var(--text); }
+  .rec-dot{
+    width:8px; height:8px; border-radius:50%; background: var(--amber); display:inline-block;
+    animation: blink 1.6s infinite;
+  }
+  @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  /* small camera rig, reused inside the main-window mockup below */
+  .rig{ position:absolute; left:50%; bottom:34px; transform:translateX(-50%); }
+  .rig .arm{ width:6px; height:64px; background:var(--slate); margin:0 auto; border-radius:3px; }
+  .rig .body{ width:56px; height:44px; background:var(--panel-2); border:1px solid var(--slate); border-radius:10px 10px 6px 6px; margin-top:-4px; }
+  .rig .head{ width:30px; height:26px; background:var(--panel-2); border:1px solid var(--slate); border-radius:8px; margin:0 auto -4px auto; }
+
+  /* stat rail (home) */
+  .stat-rail{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:0;
+    background: var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding: 26px 8px; margin-top:8px;
+  }
+  .stat{ padding:0 20px; border-left:1px solid var(--border); text-align:left; }
+  .stat:first-child{ border-left:none; }
+  .stat .num{ font-family:var(--mono); font-size:26px; font-weight:600; color:var(--teal); line-height:1; }
+  .stat .lbl{ margin-top:8px; font-size:11.5px; color:var(--muted); line-height:1.4; }
+
+  /* feature highlight grid (home) */
+  .feat-highlights{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .fh-card{
+    background: var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:24px; transition: border-color .15s ease, transform .15s ease;
+  }
+  .fh-card:hover{ border-color: var(--teal); transform: translateY(-2px); }
+  .fh-card .icon{
+    width:38px; height:38px; border-radius:8px; background: var(--panel-2);
+    display:flex; align-items:center; justify-content:center; margin-bottom:16px; color:var(--teal);
+  }
+  .fh-card h3{ font-size:15.5px; margin-bottom:8px; }
+  .fh-card p{ color: var(--muted); font-size:13px; line-height:1.6; }
+  .fh-card .flag{ font-family:var(--mono); font-size:9.5px; color:var(--amber); letter-spacing:1px; margin-top:12px; display:block; }
+
+  /* mockup window (home) */
+  .mockup{
+    background: var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden;
+  }
+  .mockup .bar{ display:flex; gap:6px; padding:12px 16px; border-bottom:1px solid var(--border); }
+  .mockup .dot{ width:9px; height:9px; border-radius:50%; background: var(--slate); }
+  .mockup-grid{ display:grid; grid-template-columns:150px 1fr 170px; grid-template-rows:38px 1fr 64px; height:380px; }
+  .mockup-grid .m-menu{ grid-column:1/4; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:18px; padding:0 16px; font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .mockup-grid .m-browser{ border-right:1px solid var(--border); padding:16px 14px; font-size:11.5px; color:var(--muted); }
+  .mockup-grid .m-browser div{ margin-bottom:9px; padding-left:14px; position:relative; }
+  .mockup-grid .m-browser div::before{ content:"›"; position:absolute; left:0; color:var(--teal); }
+  .mockup-grid .m-live{ position:relative; background: radial-gradient(circle at 50% 40%, #202836, #171B24 75%); display:flex; align-items:center; justify-content:center; }
+  .mockup-grid .m-live .rig .body{ width:70px; height:56px; }
+  .mockup-grid .m-live .rig .head{ width:38px; height:32px; }
+  .mockup-grid .m-live .rig .arm{ height:80px; }
+  .mockup-grid .m-inspector{ border-left:1px solid var(--border); padding:16px 14px; font-size:11px; color:var(--muted); }
+  .mockup-grid .m-inspector .row{ display:flex; justify-content:space-between; margin-bottom:12px; }
+  .mockup-grid .m-inspector .row b{ color:var(--text); font-weight:500; }
+  .mockup-grid .m-timeline{ grid-column:1/4; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 16px; }
+  .mockup-grid .m-timeline .t{ width:34px; height:26px; border-radius:4px; background:var(--panel-2); border:1px solid var(--border); }
+  .mockup-grid .m-timeline .t.active{ border-color:var(--teal); }
+
+  /* roadmap teaser (home) */
+  .roadmap-teaser{
+    background: var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:28px 30px; display:flex; align-items:center; gap:30px; flex-wrap:wrap;
+  }
+  .rt-ring{ flex:0 0 auto; }
+  .rt-body{ flex:1; min-width:240px; }
+  .rt-body h3{ font-size:16px; margin-bottom:6px; }
+  .rt-body p{ color:var(--muted); font-size:13px; max-width:520px; }
+  .rt-track{ display:flex; gap:6px; margin-top:14px; }
+  .rt-node{ width:20px; height:20px; border-radius:50%; border:2px solid var(--slate); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; color:var(--muted); }
+  .rt-node.done{ background:var(--teal); border-color:var(--teal); color:#08211D; }
+  .rt-node.mid{ background:var(--amber); border-color:var(--amber); color:#3A2A00; }
+
+  /* download */
+  .download-panel{
+    background: linear-gradient(160deg, var(--panel), var(--panel-2));
+    border:1px solid var(--border); border-radius:14px; padding:40px;
+  }
+  .os-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin: 26px 0 30px 0; }
+  .os-card{ background: var(--bg); border:1px solid var(--border); border-radius:10px; padding:20px; text-align:center; }
+  .os-card .os-icon{ font-size:22px; margin-bottom:10px; }
+  .os-card .os-name{ font-weight:600; font-size:14px; margin-bottom:4px; }
+  .os-card .os-note{ font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:14px; display:block; }
+  .code-block{
+    background:#0D1015; border:1px solid var(--border); border-radius:9px;
+    padding:18px 20px; font-family:var(--mono); font-size:12.5px; color:var(--teal);
+    line-height:2; overflow-x:auto;
+  }
+  .code-block .c-muted{ color: var(--muted); }
+  .dl-footnote{ color:var(--muted); font-size:12.5px; margin-top:16px; }
+
+  /* ================= FEATURES PAGE ================= */
+  .page-hero{ padding:64px 0 20px 0; }
+  .page-hero h1{ font-size:36px; margin-bottom:14px; }
+  .page-hero p{ color:var(--muted); max-width:600px; font-size:15px; line-height:1.65; }
+
+  .nfr-intro{ display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:20px; }
+  .expand-toggle{ font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--border); border-radius:6px; padding:7px 12px; cursor:pointer; letter-spacing:.5px; }
+  .expand-toggle:hover{ border-color:var(--teal); color:var(--teal); }
+
+  .flagship-callout{
+    background: var(--panel-2); border-left:3px solid var(--amber); border-radius:0 10px 10px 0;
+    padding:20px 26px; margin-bottom:36px; font-size:13.5px; color:var(--text); line-height:1.7;
+  }
+  .flagship-callout b{ color:var(--amber); }
+
+  .feature-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; align-items:start; }
+  .feature-card{ background: var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 22px; transition:border-color .15s ease; }
+  .feature-card:hover{ border-color:#3A4356; }
+  .feature-card .fc-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; gap:10px; cursor:pointer; user-select:none; }
+  .feature-card .fc-num{ font-family:var(--mono); color:var(--muted); font-size:11px; }
+  .feature-card h3{ font-size:14.5px; flex:1; }
+  .feature-card p.fc-summary{ color:var(--muted); font-size:12.5px; line-height:1.6; }
+  .fc-chevron{ flex:0 0 auto; color:var(--muted); transition:transform .2s ease; display:flex; }
+  .feature-card.open .fc-chevron{ transform:rotate(180deg); color:var(--teal); }
+
+  .feature-detail{ display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+  .feature-card.open .feature-detail{ display:block; }
+  .detail-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:1.5px; color:var(--teal); text-transform:uppercase; margin:14px 0 8px 0; display:block; }
+  .detail-label:first-child{ margin-top:0; }
+
+  .flow-box{ background:#0D1015; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-family:var(--mono); font-size:11px; color:var(--text); line-height:1.9; }
+  .flow-box .arrow{ color:var(--teal); margin:0 5px; }
+
+  .crit-list li{ font-size:11.5px; color:var(--text); padding-left:18px; position:relative; margin-bottom:6px; line-height:1.5; }
+  .crit-list li::before{ content:"✓"; position:absolute; left:0; color:var(--teal); font-weight:700; }
+  .edge-list li{ font-size:11.5px; color:var(--muted); padding-left:16px; position:relative; margin-bottom:6px; line-height:1.5; }
+  .edge-list li::before{ content:"▸"; position:absolute; left:0; color:var(--amber); }
+
+  .kbd-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .kbd-row{ display:flex; align-items:center; gap:10px; font-size:11.5px; color:var(--muted); }
+  .kbd{ font-family:var(--mono); background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; padding:2px 8px; border-radius:5px; font-size:10.5px; color:var(--text); white-space:nowrap; }
+
+  .horizon-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .horizon-card{ background: var(--panel); border:1px dashed var(--border); border-radius:10px; padding:20px; }
+  .horizon-card h3{ font-size:13.5px; margin-bottom:6px; color: var(--text); }
+  .horizon-card p{ color:var(--muted); font-size:12px; line-height:1.6; }
+
+  /* ================= DOCS PAGE ================= */
+  .principles-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .principle{ background:var(--panel); border:1px solid var(--border); border-radius:9px; padding:16px; }
+  .principle .p-num{ font-family:var(--mono); color:var(--teal); font-size:11px; margin-bottom:8px; display:block; }
+  .principle h4{ font-size:12.5px; margin-bottom:6px; }
+  .principle p{ font-size:11px; color:var(--muted); line-height:1.55; }
+
+  .arch-diagram{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:34px; }
+  .arch-row{ display:flex; justify-content:center; gap:14px; flex-wrap:wrap; }
+  .arch-box{ background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:12px 18px; font-family:var(--mono); font-size:12px; text-align:center; }
+  .arch-box.hi{ border-color:var(--teal); color:var(--teal); }
+  .arch-connector{ height:26px; width:1px; background:var(--slate-line); margin:0 auto; position:relative; }
+  .arch-bus{ text-align:center; font-family:var(--mono); font-size:11px; color:var(--muted); padding:10px 0; border-top:1px dashed var(--slate-line); border-bottom:1px dashed var(--slate-line); margin:18px 0; }
+
+  .tree-block{
+    background:#0D1015; border:1px solid var(--border); border-radius:9px; padding:22px 26px;
+    font-family:var(--mono); font-size:12.5px; color:var(--muted); line-height:1.75; overflow-x:auto;
+  }
+  .tree-block .d{ color: var(--teal); }
+  .tree-block .f{ color: var(--text); }
+
+  .event-pills{ display:flex; flex-wrap:wrap; gap:8px; }
+  .event-pill{ font-family:var(--mono); font-size:11px; background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; }
+
+  .methods-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .methods-list li{ font-family:var(--mono); font-size:12.5px; background:var(--panel); border:1px solid var(--border); padding:9px 14px; border-radius:6px; color:var(--teal); }
+  .methods-list li span{ color:var(--muted); }
+
+  .fact-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .fact{ background:var(--panel); border:1px solid var(--border); border-radius:9px; padding:16px 18px; }
+  .fact .fnum{ font-family:var(--mono); color:var(--teal); font-size:19px; }
+  .fact .flbl{ font-size:11px; color:var(--muted); margin-top:6px; }
+
+  .two-col-docs{ display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+
+  /* ================= LIVE UPDATES PAGE (namespaced ru-) ================= */
+  .ru-wrap{ padding-top:56px; }
+  .ru-headerline{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom: 1px solid var(--border); padding-bottom:22px; margin-bottom:30px; flex-wrap:wrap; gap:16px;
+  }
+  .ru-eyebrow{ font-family:var(--mono); font-size:10.5px; letter-spacing:2px; color:var(--teal); text-transform:uppercase; margin-bottom:10px; }
+  .ru-h1{ font-family:var(--disp); font-size:32px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; }
+  .ru-subtitle{ color:var(--muted); font-size:13.5px; }
+  .ru-subtitle b{ color:var(--text); }
+  .ru-meta{ text-align:right; font-family:var(--mono); font-size:10.5px; color:var(--muted); line-height:1.7; }
+  .ru-meta span{ color:var(--text); }
+
+  .ru-hero{ display:flex; gap:34px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px 30px; margin-bottom:26px; flex-wrap:wrap; }
+  .ru-ring-wrap{ flex:0 0 auto; text-align:center; }
+  .ru-ring-label{ margin-top:8px; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+  .ru-stat-rail{ flex:1; display:grid; grid-template-columns:repeat(4,1fr); gap:0; min-width:280px; }
+  .ru-stat{ padding:0 18px; border-left:1px solid var(--border); }
+  .ru-stat:first-child{ border-left:none; padding-left:0; }
+  .ru-stat .num{ font-family:var(--mono); font-size:26px; font-weight:700; color:var(--teal); line-height:1; }
+  .ru-stat .lbl{ margin-top:6px; font-size:10.5px; color:var(--muted); line-height:1.4; }
+
+  .ru-section-head{ display:flex; align-items:baseline; gap:10px; margin:34px 0 14px 0; flex-wrap:wrap; }
+  .ru-section-num{ font-family:var(--mono); color:var(--teal); font-size:12px; }
+  .ru-section-title{ font-size:16px; font-weight:700; font-family:var(--disp); }
+  .ru-section-sub{ color:var(--muted); font-size:11.5px; margin-left:auto; }
+
+  .ru-roadmap{ background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px 26px 18px 26px; }
+  .ru-track-row{ position:relative; height:108px; }
+  .ru-track-line{ position:absolute; top:22px; left:24px; right:24px; height:3px; background:var(--slate-line); border-radius:2px; }
+  .ru-track-line-fill{ position:absolute; top:22px; left:24px; height:3px; background:var(--teal); border-radius:2px; }
+  .ru-track-nodes{ position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; padding:0 24px; }
+  .ru-node{ width:62px; text-align:center; }
+  .ru-dot{ width:22px; height:22px; border-radius:50%; margin:12px auto 0 auto; border:3px solid var(--slate); background:var(--bg); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; color:var(--muted); }
+  .ru-dot.done{ background:var(--teal); border-color:var(--teal); color:#08211D; font-weight:700; }
+  .ru-dot.mid{ background:var(--amber); border-color:var(--amber); color:#3A2A00; font-weight:700; }
+  .ru-node .n{ margin-top:8px; font-size:9.5px; color:var(--muted); line-height:1.25; }
+  .ru-node.active .n{ color:var(--text); }
+  .ru-legend{ display:flex; gap:22px; margin-top:6px; padding-top:14px; border-top:1px solid var(--border); font-size:10.5px; color:var(--muted); flex-wrap:wrap; }
+  .ru-sw{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  .ru-sw.done{ background:var(--teal); } .ru-sw.mid{ background:var(--amber); } .ru-sw.not{ background:var(--slate); }
+
+  .ru-phase-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .ru-phase-card{ background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+  .ru-phase-card .top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; gap:8px; }
+  .ru-phase-card .name{ font-size:12.5px; font-weight:700; }
+  .ru-phase-card .pct{ font-family:var(--mono); font-size:12px; color:var(--teal); }
+  .ru-bar{ height:7px; background:var(--slate-line); border-radius:4px; overflow:hidden; }
+  .ru-bar-fill{ height:100%; background:var(--teal); }
+  .ru-bar-fill.mid{ background:var(--amber); }
+  .ru-bar-fill.zero{ background:var(--slate); width:3px!important; }
+  .ru-phase-card .note{ margin-top:8px; font-size:10.5px; color:var(--muted); line-height:1.45; }
+  .ru-tag{ display:inline-block; font-family:var(--mono); font-size:9px; padding:2px 7px; border-radius:4px; margin-top:8px; letter-spacing:.5px; }
+  .ru-tag.done{ background:var(--teal-dim); color:var(--teal); }
+  .ru-tag.mid{ background:var(--amber-dim); color:var(--amber); }
+  .ru-tag.not{ background:var(--panel-2); color:var(--muted); border:1px solid var(--border); }
+
+  .ru-feat-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px 14px; }
+  .ru-feat{ display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:7px; padding:9px 12px; }
+  .ru-feat .fnum{ font-family:var(--mono); font-size:10px; color:var(--muted); width:16px; }
+  .ru-feat .fname{ flex:1; font-size:11.5px; }
+  .ru-feat .fstate{ font-family:var(--mono); font-size:9px; padding:3px 8px; border-radius:4px; letter-spacing:.5px; white-space:nowrap; }
+  .ru-feat .fstate.done{ background:var(--teal-dim); color:var(--teal); }
+  .ru-feat .fstate.mid{ background:var(--amber-dim); color:var(--amber); }
+  .ru-feat .fstate.not{ background:var(--panel-2); color:var(--muted); border:1px solid var(--border); }
+
+  .ru-testchart{ background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 24px; }
+  .ru-trow{ display:flex; align-items:center; gap:12px; margin-bottom:9px; }
+  .ru-trow .tname{ width:168px; font-family:var(--mono); font-size:10px; color:var(--muted); text-align:right; }
+  .ru-trow .tbar-wrap{ flex:1; background:var(--slate-line); border-radius:4px; height:14px; overflow:hidden; }
+  .ru-trow .tbar{ height:100%; background:var(--teal); border-radius:4px 0 0 4px; }
+  .ru-trow .tval{ width:22px; font-family:var(--mono); font-size:10.5px; color:var(--text); }
+
+  .ru-callout{ background:var(--panel-2); border-left:3px solid var(--teal); border-radius:0 8px 8px 0; padding:16px 20px; margin-top:22px; font-size:11.5px; color:var(--text); line-height:1.6; }
+  .ru-callout b{ color:var(--teal); }
+
+  .ru-two-col{ display:grid; grid-template-columns:1.15fr .85fr; gap:20px; align-items:start; }
+
+  .ru-clean li{ position:relative; padding-left:16px; margin-bottom:8px; font-size:11.5px; line-height:1.5; color:var(--text); }
+  .ru-clean li::before{ content:"›"; position:absolute; left:0; color:var(--teal); font-weight:700; }
+  .ru-clean.muted li{ color:var(--muted); }
+  .ru-clean.muted li::before{ color:var(--slate); }
+
+  .ru-commit-list{ font-family:var(--mono); font-size:10.5px; line-height:2; }
+  .ru-commit-list .hash{ color:var(--teal); }
+  .ru-commit-list .msg{ color:var(--text); }
+
+  /* ---------- footer ---------- */
+  .footer{ border-top:1px solid var(--border); padding:44px 0; margin-top:40px; }
+  .footer-inner{ display:flex; justify-content:space-between; flex-wrap:wrap; gap:24px; }
+  .footer-links{ display:flex; gap:26px; flex-wrap:wrap; }
+  .footer-links a{ color:var(--muted); font-size:13px; }
+  .footer-links a:hover{ color:var(--teal); }
+  .footer-fine{ color:var(--slate); font-size:12px; margin-top:18px; font-family:var(--mono); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width:960px){
+    .feat-highlights, .horizon-grid, .os-grid{ grid-template-columns:repeat(2,1fr); }
+    .mockup-grid{ grid-template-columns:120px 1fr 150px; }
+    .stat-rail, .ru-stat-rail{ grid-template-columns:repeat(2,1fr); }
+    .stat{ border-left:none!important; border-top:1px solid var(--border); padding:16px 0 0 0!important; margin-top:12px; }
+    .stat:nth-child(1),.stat:nth-child(2){ border-top:none!important; margin-top:0; }
+    .principles-grid, .feature-grid, .two-col-docs, .ru-two-col{ grid-template-columns:1fr; }
+    .nav-links{ display:none; }
+    .nav-toggle{ display:block; }
+    .nav.open .nav-links{
+      display:flex; flex-direction:column; position:absolute; top:100%; left:0; right:0;
+      background:var(--panel); border-bottom:1px solid var(--border); padding:20px 32px; gap:16px;
+    }
+  }
+  @media (max-width:640px){
+    section{ padding:56px 0; }
+    .container{ padding:0 20px; }
+    .hero h1{ font-size:32px; }
+    .feat-highlights, .horizon-grid, .os-grid, .fact-strip, .arch-row, .principles-grid, .methods-list{ grid-template-columns:1fr; }
+    .mockup-grid{ display:none; }
+    .roadmap-teaser{ flex-direction:column; align-items:flex-start; }
+    .ru-track-nodes{ overflow-x:auto; justify-content:flex-start; gap:20px; padding:0 8px; }
+    .ru-track-line, .ru-track-line-fill{ display:none; }
+    .ru-trow{ display:block; margin-bottom:14px; }
+    .ru-trow .tname, .ru-trow .tval{ width:auto; text-align:left; margin-bottom:4px; display:block; }
+    .headerline, .ru-headerline{ display:block!important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="siteNav">
+  <div class="nav-inner">
+    <a class="brand" href="#home" data-page="home">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+        <rect x="1" y="1" width="28" height="28" rx="7" stroke="#4FD8C4" stroke-width="1.6"/>
+        <circle cx="5.5" cy="7" r="1.3" fill="#4FD8C4"/>
+        <circle cx="5.5" cy="23" r="1.3" fill="#4FD8C4"/>
+        <circle cx="24.5" cy="7" r="1.3" fill="#4FD8C4"/>
+        <circle cx="24.5" cy="23" r="1.3" fill="#4FD8C4"/>
+        <circle cx="15" cy="15" r="4.2" fill="none" stroke="#F2B84B" stroke-width="1.6"/>
+      </svg>
+      <span class="brand-name">Frame<b>Labs</b></span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a data-page="home" href="#home">Home</a>
+      <a data-page="features" href="#features">Features</a>
+      <a data-page="docs" href="#docs">Docs</a>
+      <a data-page="updates" href="#updates">Live Updates</a>
+      <a class="nav-gh" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12a3 3 0 0 0 3 3h9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>
+        GitHub
+      </a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="#home" data-page="home" data-scroll="download">Download</a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">☰</button>
+  </div>
+</header>
+
+<!-- ============ HOME ============ -->
+<main class="site-page active" id="page-home">
+  <div class="container">
+
+    <div class="hero hero-solo">
+      <div class="eyebrow">Open source · stop-motion · Blender-native</div>
+      <h1>Open source stop-motion software<br>made for <span class="accent">Blender</span>.</h1>
+      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#home" data-page="home" data-scroll="download">Download FrameLabs</a>
+        <a class="btn btn-outline" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">View Source</a>
+      </div>
+      <div class="hero-meta">
+        <span><span class="rec-dot"></span> Session 11 in progress</span>
+        <span>HEAD <b class="mono">99e4bad</b></span>
+        <span>Windows · macOS · Linux</span>
+      </div>
+    </div>
+
+    <div class="stat-rail">
+      <div class="stat"><div class="num">14</div><div class="lbl">Features in the spec, tracked one by one</div></div>
+      <div class="stat">212<span class="mono"></span><div class="lbl" style="margin-top:8px;">Automated tests passing right now</div></div>
+      <div class="stat"><div class="num">3</div><div class="lbl">Platforms: Windows, macOS, Linux</div></div>
+      <div class="stat"><div class="num">MIT</div><div class="lbl">Free and open source, forever</div></div>
+    </div>
+
+  </div>
+
+  <section>
+    <div class="container">
+      <div class="head-row">
+        <div>
+          <div class="eyebrow">Built around the shot, not the software</div>
+          <h2>Everything a stop-motion set already needs</h2>
+        </div>
+      </div>
+      <p class="section-sub">FrameLabs was designed against a full feature specification, animator-first. A few of the fourteen features that make it up:</p>
+
+      <div class="feat-highlights">
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-3v10l-4-3"/></svg></div>
+          <h3>Live Camera View</h3>
+          <p>Camera feed, onion skin, histogram, and safe areas together, holding 30+ FPS while you frame the shot.</p>
+        </div>
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3>One-Press Capture</h3>
+          <p>Space bar to shoot. Frame appears in the timeline within a second, metadata and thumbnail already generated.</p>
+        </div>
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M4 6h16M4 18h10"/></svg></div>
+          <h3>Onion Skin</h3>
+          <p>Adjustable previous/next frame counts, opacity falloff, and tint color — matched frame to frame, not just adjacent.</p>
+        </div>
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v6m0 6v6M3 12h6m6 0h6"/></svg></div>
+          <h3>Autosave & Crash Recovery</h3>
+          <p>Silently autosaves after every capture, never interrupting a shot. Crash recovery on restart is next up.</p>
+        </div>
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></div>
+          <h3>Timeline</h3>
+          <p>Select, replace, duplicate, and delete frames with full undo — 100 actions minimum, always reversible.</p>
+        </div>
+        <div class="fh-card">
+          <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l16 8-16 8V4z"/></svg></div>
+          <h3>Open in Blender</h3>
+          <p>One button. Camera, timeline, image sequence, and compositor are generated for you — no manual setup, ever.</p>
+          <span class="flag">★ FLAGSHIP FEATURE</span>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:36px;">
+        <a class="btn btn-outline" href="#features" data-page="features">See all 14 features →</a>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0;">
+    <div class="container">
+      <div class="eyebrow">The main window</div>
+      <h2>One screen, everything in reach</h2>
+      <p class="section-sub">Camera settings, project browser, and timeline sit around a live view that never drops frames — so you're always looking at the shot, not hunting for a menu.</p>
+      <div class="mockup">
+        <div class="bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        <div class="mockup-grid">
+          <div class="m-menu">File &nbsp; Edit &nbsp; Camera &nbsp; Timeline &nbsp; Blender &nbsp; Help</div>
+          <div class="m-browser">
+            <div>Frames</div><div>Audio</div><div>References</div><div>Overlays</div><div>Notes</div><div>Exports</div><div>Plugins</div>
+          </div>
+          <div class="m-live"><div class="rig"><div class="head"></div><div class="body"></div><div class="arm"></div></div></div>
+          <div class="m-inspector">
+            <div class="row"><span>ISO</span><b>400</b></div>
+            <div class="row"><span>Shutter</span><b>1/60</b></div>
+            <div class="row"><span>Aperture</span><b>f/5.6</b></div>
+            <div class="row"><span>White Bal.</span><b>Auto</b></div>
+            <div class="row"><span>Resolution</span><b>6000×4000</b></div>
+          </div>
+          <div class="m-timeline">
+            <div class="t"></div><div class="t"></div><div class="t"></div><div class="t active"></div><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div><div class="t"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0;">
+    <div class="container">
+      <div class="roadmap-teaser">
+        <svg class="rt-ring" width="90" height="90" viewBox="0 0 150 150">
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="93.5" transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">76%</text>
+          <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">BUILD</text>
+        </svg>
+        <div class="rt-body">
+          <h3>Currently in Phase 5 of 9 — UI Shell</h3>
+          <p>212 tests passing, 6 of 10 roadmap phases fully closed. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
+          <div class="rt-track">
+            <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div>
+            <div class="rt-node mid">•</div><div class="rt-node done">✓</div><div class="rt-node">7</div><div class="rt-node">8</div><div class="rt-node">9</div>
+          </div>
+        </div>
+        <a class="btn btn-outline btn-sm" href="#updates" data-page="updates">Read the live report →</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" style="padding-top:0;">
+    <div class="container">
+      <div class="download-panel">
+        <div class="eyebrow">Get FrameLabs</div>
+        <div class="head-row" style="margin-bottom:8px;">
+          <h2 style="margin-bottom:0;">Run it today, from source</h2>
+          <span class="pill pill-mid">PRE-ALPHA · MAIN BRANCH</span>
+        </div>
+        <p class="section-sub" style="margin-bottom:26px;">FrameLabs is in active development in the open. Signed, one-click installers are planned for Phase 8 — you can track that work live. Until then, running from source takes about two minutes on any of the three target platforms.</p>
+
+        <div class="os-grid">
+          <div class="os-card">
+            <div class="os-icon">🪟</div>
+            <div class="os-name">Windows</div>
+            <span class="os-note">Installer — Phase 8</span>
+            <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
+          </div>
+          <div class="os-card">
+            <div class="os-icon">🍎</div>
+            <div class="os-name">macOS</div>
+            <span class="os-note">Installer — Phase 8</span>
+            <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
+          </div>
+          <div class="os-card">
+            <div class="os-icon">🐧</div>
+            <div class="os-name">Linux</div>
+            <span class="os-note">Installer — Phase 8</span>
+            <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
+          </div>
+        </div>
+
+        <div class="code-block">
+<span class="c-muted"># clone and run — Python 3.12+</span>
+git clone https://github.com/chrisgaledesigns/framelabs.git
+cd framelabs
+pip install -e .
+framelabs
+        </div>
+        <p class="dl-footnote">Requires Python 3.12+ and a webcam, DSLR, or libcamera-compatible camera. See the <a href="#docs" data-page="docs" style="color:var(--teal);">Docs</a> for camera backend setup, or watch packaging progress on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ FEATURES ============ -->
+<main class="site-page" id="page-features">
+  <div class="container">
+    <div class="page-hero">
+      <div class="eyebrow">Feature specification</div>
+      <h1>Fourteen features. One workflow.</h1>
+      <p>Every feature below traces back to FrameLabs' feature specification — the same document driving development. Status badges are pulled straight from the current build; see <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> for the detail behind each one. Click any feature to see its workflow, acceptance criteria, and edge cases.</p>
+    </div>
+
+    <section style="padding-top:0;">
+      <div class="eyebrow">What "done" means</div>
+      <h2 style="font-size:20px;">Performance targets</h2>
+      <p class="section-sub" style="margin-bottom:22px;">The non-functional requirements every feature above is measured against — not just "does it work," but "is it fast enough to shoot with."</p>
+      <div class="fact-strip">
+        <div class="fact"><div class="fnum">&lt;3s</div><div class="flbl">Startup time</div></div>
+        <div class="fact"><div class="fnum">&lt;500ms</div><div class="flbl">Capture latency (camera dependent)</div></div>
+        <div class="fact"><div class="fnum">60</div><div class="flbl">UI frame rate (FPS)</div></div>
+        <div class="fact"><div class="fnum">30+</div><div class="flbl">Preview frame rate (FPS)</div></div>
+        <div class="fact"><div class="fnum">&lt;1s</div><div class="flbl">Autosave duration</div></div>
+        <div class="fact"><div class="fnum">100%</div><div class="flbl">Crash recovery, when an autosave exists</div></div>
+        <div class="fact"><div class="fnum">&lt;500MB</div><div class="flbl">Typical memory use</div></div>
+        <div class="fact"><div class="fnum">3</div><div class="flbl">Platforms — Windows, macOS, Linux</div></div>
+      </div>
+    </section>
+
+    <div class="flagship-callout">
+      <b>★ Feature 10 — Open in Blender</b> is the flagship feature: press one button, and FrameLabs saves the project, launches Blender, and runs a script that imports the image sequence, configures the camera and timeline, and saves the scene — with no manual setup. <b>Feature 11 — Live Blender Sync</b> takes it further: once enabled, every capture pushes straight into an already-open Blender scene, no export step at all.
+    </div>
+
+    <section style="padding-top:0;">
+      <div class="nfr-intro">
+        <h2 style="font-size:20px; margin-bottom:0;">All 14 features</h2>
+        <button class="expand-toggle" id="expandAllBtn" type="button">EXPAND ALL</button>
+      </div>
+      <div class="feature-grid" id="featureGrid">
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">01</span><h3>Project Management</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">New Project walks through name, folder, FPS, and resolution, then creates the project folder structure. Open Project restores the timeline, settings, metadata, overlays, and export history — and flags any missing frames instead of failing silently.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Create project workflow</span>
+            <div class="flow-box">File → New Project<span class="arrow">↓</span><br>Choose Project Name<span class="arrow">↓</span><br>Choose Folder<span class="arrow">↓</span><br>Choose FPS<span class="arrow">↓</span><br>Choose Resolution<span class="arrow">↓</span><br>Create → project.ffproj + images/, thumbnails/, cache/, exports/, metadata/</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Project folder and initial project file are created</li>
+              <li>Timeline starts empty; autosave starts immediately</li>
+              <li>Window title displays the project name</li>
+            </ul>
+            <span class="detail-label">Edge cases</span>
+            <ul class="edge-list">
+              <li>Folder already exists · invalid filename · no write permission · disk full</li>
+              <li>Open Project with missing images warns "14 frames are missing" and offers Continue, Locate Missing Files, or Cancel</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">02</span><h3>Camera Manager</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Detects cameras on startup and handles hot-plugging and disconnects gracefully — but right now that's webcams only. DSLR (gphoto2) and libcamera backends aren't built yet.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Detect cameras</span>
+            <div class="flow-box">No Camera<span class="arrow">→</span>Scanning...<span class="arrow">→</span>"Canon EOS R50 Connected"</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Hot-plugging supported; disconnects handled gracefully</li>
+              <li>Current frame finishes if possible when a camera drops mid-capture</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>Webcam backend is real and complete — connect/disconnect, capture, live view, hot-plug detection, "Camera Lost" reconnect/retry, all verified</li>
+              <li>DSLR (gphoto2) and libcamera backends don't exist yet — every backend implements the same Camera interface, so adding them won't touch the rest of the app</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">03</span><h3>Live View</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Camera feed, overlays, onion skin, histogram, and safe areas in one view, targeting 30+ FPS. Zoom on the wheel, pan on middle-mouse, fit with F.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Controls</span>
+            <div class="kbd-grid">
+              <div class="kbd-row"><span class="kbd">Scroll</span> Zoom</div>
+              <div class="kbd-row"><span class="kbd">Middle-click</span> Pan</div>
+              <div class="kbd-row"><span class="kbd">F</span> Fit to view</div>
+            </div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Feed, overlays, onion skin, histogram, and safe areas render together</li>
+              <li>Holds 30+ FPS during live preview</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>Camera feed, zoom/pan/fit, onion skin, playback, safe area guides, and the histogram overlay are all closed and verified — Feature 3 is fully complete</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">04</span><h3>Capture</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Space or the capture button triggers the camera, verifies and writes the image, extracts metadata, generates a thumbnail, and updates the timeline — with no duplicate frame numbers and no corrupt frames on a timeout.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Capture workflow</span>
+            <div class="flow-box">Trigger Camera<span class="arrow">→</span>Receive Image<span class="arrow">→</span>Verify Image<span class="arrow">→</span>Write PNG<span class="arrow">→</span>Extract Metadata<span class="arrow">→</span>Generate Thumbnail<span class="arrow">→</span>Update Timeline<span class="arrow">→</span>Autosave<span class="arrow">→</span>Notify Blender<span class="arrow">→</span>Ready</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Frame appears within one second, hardware permitting</li>
+              <li>Timeline updates immediately; no duplicate frame numbers</li>
+            </ul>
+            <span class="detail-label">Failure cases</span>
+            <ul class="edge-list">
+              <li>Camera timeout → "Capture Failed / Retry" — no corrupt frame is ever created</li>
+              <li>Disk full → "Disk Full / Capture Aborted" — the project stays usable</li>
+              <li>Write failure retries once, then shows an error</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">05</span><h3>Timeline</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Real thumbnails, click-to-select, and marker/selection borders are built and wired in. Replace, delete, duplicate, and notes are still ahead; reordering is planned for a future release.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Replace frame workflow</span>
+            <div class="flow-box">Select Frame<span class="arrow">→</span>Replace<span class="arrow">→</span>Capture New Image<span class="arrow">→</span>Overwrite Existing<span class="arrow">→</span>Refresh Thumbnail</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Frame number stays the same after a replace</li>
+              <li>Delete asks "Delete Frame 152?" and is always undoable</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>The real TimelineWidget is built: thumbnails, click-to-select driving the playhead, and independent marker/selection borders that can stack on one frame</li>
+              <li>Delete, replace, and duplicate frame actions aren't wired to the UI yet; notes UI presentation (tooltip vs. inline vs. panel) is still an open decision</li>
+              <li>Drag-to-reorder is spec'd but intentionally deferred to a future release</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">06</span><h3>Onion Skin</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Adjustable previous/next frame counts, opacity, and tint colors, tuned to stay out of the way of live preview performance on modern hardware.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Adjustable controls</span>
+            <div class="flow-box">Opacity<span class="arrow">·</span>Previous Frame Count<span class="arrow">·</span>Next Frame Count<span class="arrow">·</span>Tint Color</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Supports both previous and next frames, not just adjacent ones</li>
+              <li>No noticeable impact on live preview performance on modern hardware</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">07</span><h3>Playback</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Play, pause, and loop at 25/50/100/200% speed, with live speed changes taking effect on the next frame. Playback never modifies the project — reverse playback is planned for later.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Controls</span>
+            <div class="flow-box">Play<span class="arrow">·</span>Pause<span class="arrow">·</span>Loop<span class="arrow">·</span>Reverse (future)<br>Speed: 25% <span class="arrow">·</span> 50% <span class="arrow">·</span> 100% <span class="arrow">·</span> 200%</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Playback should never modify the project</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>Real worker-thread playback, manually verified alongside Onion Skin — including a shutdown-timing crash that surfaced once both ran together, now fixed and verified</li>
+              <li>Reaching the end of a non-looping sequence now resets the playhead to frame 1 automatically, so the timeline is immediately ready to play again with no manual reselection</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">08</span><h3>Autosave</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Autosaves silently after every capture. The independent 30-second timer and crash recovery on restart are spec'd but not built yet.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Trigger</span>
+            <div class="flow-box">Every 30 seconds<span class="arrow">AND</span>after every capture</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Silent — never interrupts a capture in progress</li>
+              <li>Keeps the last 20 autosaves</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>After-every-capture autosave is real and wired into the capture pipeline</li>
+              <li>The independent 30-second timer and the "Recovered Project Found — Restore? / Discard?" crash recovery flow don't exist yet</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">09</span><h3>Undo / Redo</h3><span class="pill pill-not">NOT STARTED</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Covers capture, delete, replace, notes, timeline edits, and project settings, with a 100-action minimum history and full redo support.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Covers</span>
+            <div class="flow-box">Capture<span class="arrow">·</span>Delete<span class="arrow">·</span>Replace<span class="arrow">·</span>Notes<span class="arrow">·</span>Timeline edits<span class="arrow">·</span>Project settings</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Minimum 100-action history</li>
+              <li>Redo supported for everything undo covers</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">10</span><h3>Blender Export ★</h3><span class="pill pill-not">NOT STARTED</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Saves the project, generates export data, launches Blender, and runs a script that imports the sequence, sets up the camera and timeline, and saves the scene — ready to open, no manual setup.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Open in Blender workflow</span>
+            <div class="flow-box">Save Project<span class="arrow">→</span>Generate Export Data<span class="arrow">→</span>Launch Blender<span class="arrow">→</span>Run Blender Script<span class="arrow">→</span>Import Sequence<span class="arrow">→</span>Configure Camera<span class="arrow">→</span>Set Timeline<span class="arrow">→</span>Save Blend<span class="arrow">→</span>Open Scene</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Blender scene auto-creates Camera, Timeline, Image Sequence, Compositor, Output Settings, and Project Metadata</li>
+              <li>No manual setup required in Blender</li>
+            </ul>
+            <span class="detail-label">Failure cases</span>
+            <ul class="edge-list">
+              <li>Blender not installed → prompts to locate the executable, then remembers it</li>
+              <li>Blender already running → offers Reuse Existing Blender or Open New Instance</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">11</span><h3>Live Blender Sync (v2)</h3><span class="pill pill-not">NOT STARTED</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">With sync enabled, every capture sends the new frame, timeline update, and metadata straight into an already-running Blender scene — no export, no reload button.</p>
+          <div class="feature-detail">
+            <span class="detail-label">When enabled</span>
+            <div class="flow-box">Capture<span class="arrow">→</span>New Frame + Timeline Update + Metadata<span class="arrow">→</span>Blender updates automatically</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>No export step and no reload button required</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">12</span><h3>Keyboard Shortcuts</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Every shortcut is reassignable. Defaults include Space to capture, Ctrl+S to save, B to open Blender, and O to toggle onion skin.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Defaults</span>
+            <div class="kbd-grid">
+              <div class="kbd-row"><span class="kbd">Space</span> Capture</div>
+              <div class="kbd-row"><span class="kbd">Ctrl+S</span> Save</div>
+              <div class="kbd-row"><span class="kbd">Ctrl+Z</span> Undo</div>
+              <div class="kbd-row"><span class="kbd">Ctrl+Shift+Z</span> Redo</div>
+              <div class="kbd-row"><span class="kbd">B</span> Open Blender</div>
+              <div class="kbd-row"><span class="kbd">O</span> Toggle onion skin</div>
+              <div class="kbd-row"><span class="kbd">← / →</span> Previous / next frame</div>
+              <div class="kbd-row"><span class="kbd">Enter</span> Play / stop</div>
+            </div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Every shortcut above is reassignable</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">13</span><h3>Plugin Manager</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Scans a plugins/ folder on startup and loads only valid plugins. A crashing plugin is disabled automatically — the rest of the app keeps running.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Startup workflow</span>
+            <div class="flow-box">Startup<span class="arrow">→</span>Search plugins/<span class="arrow">→</span>Load valid plugins only</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>A plugin exception disables that plugin, not the app</li>
+              <li>The application continues running normally</li>
+            </ul>
+            <span class="detail-label">Currently</span>
+            <ul class="edge-list">
+              <li>Discovery, isolated loading, and startup wiring are closed and verified — a bad plugin, a plugin missing its interface, or a plugin whose activation fails is caught and logged without taking down the app</li>
+              <li>Still ahead: no plugin management UI yet, and no deactivate/event-bus hooks for a plugin to actually act on capture, timeline, or camera events</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="fc-top"><span class="fc-num mono">14</span><h3>Logging</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Every meaningful operation — captures, autosaves, Blender launches, plugin failures — is logged, in past tense, to make bug reports reproducible.</p>
+          <div class="feature-detail">
+            <span class="detail-label">Examples logged</span>
+            <div class="flow-box">Project Opened<span class="arrow">·</span>Capture Started<span class="arrow">·</span>Capture Complete<span class="arrow">·</span>Autosave<span class="arrow">·</span>Blender Launch<span class="arrow">·</span>Plugin Loaded<span class="arrow">·</span>Plugin Failed</div>
+            <span class="detail-label">Acceptance criteria</span>
+            <ul class="crit-list">
+              <li>Every important action is logged, in past tense</li>
+              <li>Logs are detailed enough to reproduce a bug report</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">On the horizon</div>
+      <h2>Stretch goals</h2>
+      <p class="section-sub">Not on the current roadmap phases, but part of where FrameLabs is headed once the core is solid.</p>
+      <div class="horizon-grid">
+        <div class="horizon-card"><h3>Focus Peaking</h3><p>Highlight in-focus edges live, for cameras that support it.</p></div>
+        <div class="horizon-card"><h3>Motion Detection</h3><p>Warn if the camera was bumped between two captures.</p></div>
+        <div class="horizon-card"><h3>AI Cleanup</h3><p>Detect dust, hot pixels, and sensor artifacts, and offer corrections.</p></div>
+        <div class="horizon-card"><h3>Frame Comparison</h3><p>Compare the current frame against any previous frame, not just the adjacent one.</p></div>
+        <div class="horizon-card"><h3>Network Companion</h3><p>Trigger capture from a phone or tablet over Wi-Fi.</p></div>
+        <div class="horizon-card"><h3>Multi-Camera Sync</h3><p>Capture from multiple cameras at once, for stereo or reference workflows.</p></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ============ DOCS ============ -->
+<main class="site-page" id="page-docs">
+  <div class="container">
+    <div class="page-hero">
+      <div class="eyebrow">Developer handbook</div>
+      <h1>Built to be understood, not just used</h1>
+      <p>FrameLabs' Developer Handbook is the source of truth for implementation decisions — if code conflicts with it, the handbook wins. Here's the shape of it.</p>
+    </div>
+
+    <section style="padding-top:0;">
+      <h2 style="font-size:22px;">Guiding principles</h2>
+      <p class="section-sub" style="margin-bottom:24px;">Every design decision reinforces these.</p>
+      <div class="principles-grid">
+        <div class="principle"><span class="p-num">01</span><h4>Never Lose User Data</h4><p>A captured frame is the most valuable thing in the app. Nothing — a crash, a disconnect, a failed export — should ever lose one. If there's uncertainty, preserve the data.</p></div>
+        <div class="principle"><span class="p-num">02</span><h4>UI Never Blocks</h4><p>Saving, importing, exporting, thumbnailing, and launching Blender all run on background workers. The interface stays responsive, always.</p></div>
+        <div class="principle"><span class="p-num">03</span><h4>Small Modules</h4><p>Each module does one thing. CaptureService, not CaptureManagerThatAlsoHandlesUISavingExportsAndPlayback.</p></div>
+        <div class="principle"><span class="p-num">04</span><h4>Explicit Over Clever</h4><p>Readable beats clever. No unnecessary abstraction, no hidden behavior — clarity first.</p></div>
+        <div class="principle"><span class="p-num">05</span><h4>Composition Over Inheritance</h4><p>Objects are assembled from smaller services rather than built through deep inheritance hierarchies.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2 style="font-size:22px;">System architecture</h2>
+      <p class="section-sub" style="margin-bottom:24px;">UI never touches hardware or the filesystem directly — everything routes through services and the event bus.</p>
+      <div class="arch-diagram">
+        <div class="arch-row"><div class="arch-box hi">User Interface (PySide6)</div></div>
+        <div class="arch-connector"></div>
+        <div class="arch-row">
+          <div class="arch-box">Capture Service</div>
+          <div class="arch-box">Timeline</div>
+          <div class="arch-box">Project Manager</div>
+        </div>
+        <div class="arch-bus">Event Bus / Signals</div>
+        <div class="arch-row">
+          <div class="arch-box">Camera Manager</div>
+          <div class="arch-box">Image Processing Engine</div>
+          <div class="arch-box">Blender Bridge</div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding-top:0;">
+      <div class="two-col-docs">
+        <div>
+          <h2 style="font-size:22px;">Project layout</h2>
+          <p class="section-sub" style="margin-bottom:20px;">Each directory owns its own responsibility; modules don't reach across layers.</p>
+          <div class="tree-block">frameforge/<br>
+&nbsp;├── <span class="d">app/</span> <span class="f">main.py, startup.py, settings.py</span><br>
+&nbsp;├── <span class="d">core/</span> <span class="f">event_bus, logger, config, task_manager</span><br>
+&nbsp;├── <span class="d">camera/</span> <span class="f">camera_manager, camera_interface, backends</span><br>
+&nbsp;├── <span class="d">capture/</span> <span class="f">capture_service, frame_writer, metadata</span><br>
+&nbsp;├── <span class="d">timeline/</span> <span class="f">timeline, playback, onion_skin</span><br>
+&nbsp;├── <span class="d">image_processing/</span> <span class="f">histogram, overlays, color</span><br>
+&nbsp;├── <span class="d">project/</span> <span class="f">project, autosave, serializer</span><br>
+&nbsp;├── <span class="d">blender/</span> <span class="f">exporter, bridge, launcher, templates/</span><br>
+&nbsp;├── <span class="d">plugins/</span><br>
+&nbsp;├── <span class="d">ui/</span> <span class="f">main_window, timeline_widget, live_view</span><br>
+&nbsp;├── <span class="d">tests/</span><br>
+&nbsp;└── <span class="d">docs/</span></div>
+        </div>
+        <div>
+          <h2 style="font-size:22px;">Camera interface</h2>
+          <p class="section-sub" style="margin-bottom:20px;">Every backend — webcam, gphoto, libcamera — implements the same contract. The rest of the app never knows which is connected.</p>
+          <ul class="methods-list">
+            <li>connect() <span>()</span></li>
+            <li>disconnect()</li>
+            <li>capture()</li>
+            <li>start_live_view()</li>
+            <li>stop_live_view()</li>
+            <li>set_iso()</li>
+            <li>set_shutter()</li>
+            <li>set_aperture()</li>
+            <li>get_metadata()</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding-top:0;">
+      <div class="two-col-docs">
+        <div>
+          <h2 style="font-size:22px;">Capture pipeline</h2>
+          <p class="section-sub" style="margin-bottom:20px;">A fixed sequence — never reordered without justification.</p>
+          <ul class="ru-clean">
+            <li>Trigger camera</li>
+            <li>Receive image</li>
+            <li>Verify image</li>
+            <li>Write image + metadata</li>
+            <li>Generate thumbnail</li>
+            <li>Update timeline</li>
+            <li>Autosave</li>
+            <li>Emit <span class="mono">FRAME_CAPTURED</span></li>
+          </ul>
+        </div>
+        <div>
+          <h2 style="font-size:22px;">Event bus</h2>
+          <p class="section-sub" style="margin-bottom:20px;">Modules talk through events, named in past tense — they describe something that already happened.</p>
+          <div class="event-pills">
+            <span class="event-pill">FRAME_CAPTURED</span>
+            <span class="event-pill">PROJECT_OPENED</span>
+            <span class="event-pill">PROJECT_SAVED</span>
+            <span class="event-pill">TIMELINE_UPDATED</span>
+            <span class="event-pill">CAMERA_CONNECTED</span>
+            <span class="event-pill">CAMERA_DISCONNECTED</span>
+            <span class="event-pill">PLAYBACK_STARTED</span>
+            <span class="event-pill">BLENDER_SYNC</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding-top:0;">
+      <h2 style="font-size:22px;">Project file format</h2>
+      <p class="section-sub" style="margin-bottom:20px;">Projects are plain folders. No proprietary binary formats — <span class="mono" style="color:var(--teal);">project.ffproj</span> is readable, versioned JSON.</p>
+      <div class="tree-block">
+{<br>
+&nbsp;&nbsp;"version": 1,<br>
+&nbsp;&nbsp;"name": "Robot Walk Cycle",<br>
+&nbsp;&nbsp;"fps": 12,<br>
+&nbsp;&nbsp;"resolution": [6000, 4000],<br>
+&nbsp;&nbsp;"camera": { "model": "Canon EOS R50", "lens": "50mm" },<br>
+&nbsp;&nbsp;"frames": [ { "number": 1, "file": "images/000001.png" } ]<br>
+}
+      </div>
+    </section>
+
+    <section style="padding-top:0;">
+      <h2 style="font-size:22px;">Coding standards</h2>
+      <div class="fact-strip">
+        <div class="fact"><div class="fnum">3.12+</div><div class="flbl">Python version</div></div>
+        <div class="fact"><div class="fnum">88</div><div class="flbl">Max line length (chars)</div></div>
+        <div class="fact"><div class="fnum">80%</div><div class="flbl">Min. coverage, core modules</div></div>
+        <div class="fact"><div class="fnum">95%</div><div class="flbl">Min. coverage, critical systems</div></div>
+      </div>
+      <p class="dl-footnote" style="margin-top:18px;">Formatted with Black, Ruff, and isort — no exceptions. Every public function needs type hints and a docstring. Tests never depend on real hardware; camera backends are mocked.</p>
+      <p class="dl-footnote">Contributing guide, CI, and issue templates are tracked as Phase 9 on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page — not written yet, so hold off on a PR template until then.</p>
+    </section>
+  </div>
+</main>
+
+<!-- ============ LIVE UPDATES ============ -->
+<main class="site-page" id="page-updates">
+  <div class="container ru-wrap">
+
+    <div class="ru-headerline">
+      <div>
+        <div class="ru-eyebrow">git · main · framelabs</div>
+        <h1 class="ru-h1">Live Updates</h1>
+        <div class="ru-subtitle">Open-source stop-motion animation app with one-click Blender integration — built by <b>Chris (chrisgaledesigns)</b> with Claude as engineering partner.</div>
+      </div>
+      <div class="ru-meta">
+        SESSION <span>11</span> · PUSH <span>1</span><br>
+        HEAD <span>99e4bad</span><br>
+        <span>Last updated July 15, 2026</span>
+      </div>
+    </div>
+
+    <div class="ru-hero">
+      <div class="ru-ring-wrap">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="93.5" transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">76%</text>
+          <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">OVERALL BUILD</text>
+        </svg>
+        <div class="ru-ring-label">Roadmap Phases 0–9</div>
+      </div>
+      <div class="ru-stat-rail">
+        <div class="ru-stat"><div class="num">6<span style="color:var(--muted); font-size:16px;">/10</span></div><div class="lbl">Roadmap phases fully closed</div></div>
+        <div class="ru-stat"><div class="num">212</div><div class="lbl">Automated tests, all passing</div></div>
+        <div class="ru-stat"><div class="num">1</div><div class="lbl">Commits pushed this session</div></div>
+        <div class="ru-stat"><div class="num">5<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
+      </div>
+    </div>
+
+    <div class="ru-section-head">
+      <span class="ru-section-num">01</span><span class="ru-section-title">Roadmap Track</span>
+      <span class="ru-section-sub">Phase 0 → Phase 9</span>
+    </div>
+    <div class="ru-roadmap">
+      <div class="ru-track-row">
+        <div class="ru-track-line"></div>
+        <div class="ru-track-line-fill" style="width:58%;"></div>
+        <div class="ru-track-nodes">
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">0<br>Environment</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">1<br>Scaffold</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">2<br>Core infra</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">3<br>Camera layer</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">4<br>Capture pipeline</div></div>
+          <div class="ru-node active"><div class="ru-dot mid">•</div><div class="n">5<br>UI shell</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">6<br>Timeline &amp; onion skin</div></div>
+          <div class="ru-node"><div class="ru-dot">7</div><div class="n">Blender bridge</div></div>
+          <div class="ru-node"><div class="ru-dot">8</div><div class="n">.exe packaging</div></div>
+          <div class="ru-node"><div class="ru-dot">9</div><div class="n">GitHub polish</div></div>
+        </div>
+      </div>
+      <div class="ru-legend">
+        <span><span class="ru-sw done"></span>Closed</span>
+        <span><span class="ru-sw mid"></span>In progress — this is where we are now</span>
+        <span><span class="ru-sw not"></span>Not started</span>
+      </div>
+    </div>
+
+    <div class="ru-section-head">
+      <span class="ru-section-num">02</span><span class="ru-section-title">Phase Breakdown</span>
+      <span class="ru-section-sub">Estimated completion per phase</span>
+    </div>
+    <div class="ru-phase-grid">
+      <div class="ru-phase-card"><div class="top"><span class="name">0 · Environment Setup</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">1 · Scaffold &amp; Packaging Config</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">2 · Core Infrastructure</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Logger, event bus, config — logger wired app-wide.</div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">3 · Camera Layer</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Interface + webcam backend + manager, now including live-view start/stop/read-frame support. Closed for alpha scope; DSLR backend deferred.</div><div class="ru-tag done">CLOSED (ALPHA)</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">4 · Capture Pipeline</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Frame writer, metadata, capture service + Project/serializer/creator.</div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">~95%</span></div><div class="ru-bar"><div class="ru-bar-fill mid" style="width:95%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, and now the real Timeline widget (thumbnails, click-to-select, marker/selection borders) are all CLOSED and real. Delete/replace/duplicate frame actions and Export/Open in Blender remain — the latter intentionally deferred to Phase 7's Blender bridge work, not left over from this phase.</div><div class="ru-tag mid">IN PROGRESS</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">6 · Timeline, Playback, Onion Skin</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Timeline data model, Onion Skin engine, and Playback controller all built, tested, and manually verified. <b style="color:var(--teal)">The shutdown crash that previously blocked Playback</b> (<span class="mono">RuntimeError: Signal source has been deleted</span>, when Onion Skin refreshed during Play) was root-caused and fixed — a `QThread.wait()` event-queue timing issue, not a logic bug. Safe areas and the histogram overlay (Feature 3) are now built and manually verified too, closing this phase out. This session: a real bug fix, not new scope — reaching the end of a non-looping sequence now resets the playhead to frame 1 instead of leaving it parked on the last frame.</div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">7 · Blender Bridge</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">The flagship feature — not yet begun.</div><div class="ru-tag not">NOT STARTED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">8 · Packaging to .exe</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">PyInstaller packaging for distribution.</div><div class="ru-tag not">NOT STARTED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">9 · GitHub Polish</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">CONTRIBUTING.md, CI, issue templates.</div><div class="ru-tag not">NOT STARTED</div></div>
+    </div>
+
+    <div class="ru-section-head">
+      <span class="ru-section-num">03</span><span class="ru-section-title">Feature Specification Coverage</span>
+      <span class="ru-section-sub">14 numbered features, per the Feature Spec</span>
+    </div>
+    <div class="ru-feat-grid">
+      <div class="ru-feat"><span class="fnum">01</span><span class="fname">Project Management</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">02</span><span class="fname">Camera Manager</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">03</span><span class="fname">Live View</span><span class="fstate done">DONE</span></div>
+      <div class="ru-feat"><span class="fnum">04</span><span class="fname">Capture</span><span class="fstate done">DONE</span></div>
+      <div class="ru-feat"><span class="fnum">05</span><span class="fname">Timeline</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">06</span><span class="fname">Onion Skin</span><span class="fstate done">DONE</span></div>
+      <div class="ru-feat"><span class="fnum">07</span><span class="fname">Playback</span><span class="fstate done">DONE</span></div>
+      <div class="ru-feat"><span class="fnum">08</span><span class="fname">Autosave</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">09</span><span class="fname">Undo / Redo</span><span class="fstate not">NOT STARTED</span></div>
+      <div class="ru-feat"><span class="fnum">10</span><span class="fname">Blender Export</span><span class="fstate not">NOT STARTED</span></div>
+      <div class="ru-feat"><span class="fnum">11</span><span class="fname">Live Blender Sync (v2)</span><span class="fstate not">NOT STARTED</span></div>
+      <div class="ru-feat"><span class="fnum">12</span><span class="fname">Keyboard Shortcuts</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">13</span><span class="fname">Plugin Manager</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">14</span><span class="fname">Logging</span><span class="fstate done">DONE</span></div>
+    </div>
+
+    <div class="ru-two-col" style="margin-top:28px;">
+      <div>
+        <div class="ru-section-head" style="margin-top:0;">
+          <span class="ru-section-num">04</span><span class="ru-section-title">Test Suite Composition</span>
+          <span class="ru-section-sub">195 passing</span>
+        </div>
+        <div class="ru-testchart">
+          <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">27</span></div>
+          <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:93%"></div></div><span class="tval">25</span></div>
+          <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:56%"></div></div><span class="tval">15</span></div>
+          <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:52%"></div></div><span class="tval">14</span></div>
+          <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:44%"></div></div><span class="tval">12</span></div>
+          <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_frame_writer.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_playback_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:33%"></div></div><span class="tval">9</span></div>
+          <div class="ru-trow"><span class="tname">test_plugin_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:33%"></div></div><span class="tval">9</span></div>
+          <div class="ru-trow"><span class="tname">test_histogram.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_metadata.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_playback.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_onion_skin.py</span><div class="tbar-wrap"><div class="tbar" style="width:22%"></div></div><span class="tval">6</span></div>
+          <div class="ru-trow"><span class="tname">test_onion_skin_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:19%"></div></div><span class="tval">5</span></div>
+          <div class="ru-trow"><span class="tname">test_config.py</span><div class="tbar-wrap"><div class="tbar" style="width:15%"></div></div><span class="tval">4</span></div>
+          <div class="ru-trow"><span class="tname">test_project.py</span><div class="tbar-wrap"><div class="tbar" style="width:15%"></div></div><span class="tval">4</span></div>
+          <div class="ru-trow"><span class="tname">test_event_bus.py</span><div class="tbar-wrap"><div class="tbar" style="width:11%"></div></div><span class="tval">3</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ru-section-head" style="margin-top:0;">
+          <span class="ru-section-num">05</span><span class="ru-section-title">Latest Commits</span>
+          <span class="ru-section-sub"></span>
+        </div>
+        <div class="ru-testchart" style="padding:18px 20px;">
+          <div class="ru-commit-list">
+            <div><span class="hash">e2ad3a3</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add PluginManager: scan, load, and isolate plugins at startup for Feature 13</div>
+            <div><span class="hash">28230de</span></div>
+            <div class="msg" style="margin-bottom:8px;">Log Capture Started for Feature 14 event coverage</div>
+            <div><span class="hash">3fd1593</span></div>
+            <div class="msg" style="margin-bottom:8px;">Wire histogram overlay into Inspector panel</div>
+            <div><span class="hash">c274558</span></div>
+            <div class="msg">Wire luminance histogram computation into LiveViewController</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ru-callout">
+      <b>This session — Feature 3 Live View closed out for good with Safe Areas and the Histogram overlay, and Feature 13 Plugin Manager's core loading engine is built, tested, and wired into startup.</b> Safe Area guides (90% action-safe, 80% title-safe) and a real luminance histogram (<span class="mono">compute_luminance_histogram()</span>, Rec. 601 luma weights, strided downsampling to stay cheap at 30+ FPS) now render live in the Inspector panel, closing out every remaining piece of Feature 3 — camera feed, zoom/pan/fit, Onion Skin, Playback, Safe Areas, and Histogram are all done and verified. <span class="mono">PluginManager</span> scans <span class="mono">~/.framelabs/plugins/</span> for <span class="mono">*.py</span> files, and per the Developer Handbook's Plugin System rule, loads each one inside its own broad <span class="mono">try/except Exception</span> — the one deliberate place in this codebase where that's the correct choice, since a plugin can fail in essentially any way (bad syntax, import error, the wrong number of <span class="mono">PluginBase</span> subclasses, or an exception from <span class="mono">activate()</span> itself) and every one of those must be caught, logged, and skipped without taking the app down. Wired into <span class="mono">app/main.py</span> so plugin loading runs before <span class="mono">QApplication</span> is even constructed — confirmed for real with a live plugin file dropped into <span class="mono">~/.framelabs/plugins/</span>, whose <span class="mono">activate()</span> printed and logged before any camera or live-view activity. Committed as <span class="mono">e2ad3a3</span>. Still ahead for Feature 13: a plugin management UI and a <span class="mono">deactivate()</span>/event-bus hook so a plugin can actually act on capture, timeline, or camera events. 195/195 tests passing throughout, <span class="mono">black</span>/<span class="mono">isort</span>/<span class="mono">ruff</span> all clean.
+    </div>
+
+    <div class="ru-two-col" style="margin-top:22px; margin-bottom:60px;">
+      <div>
+        <div class="ru-section-head" style="margin-top:0;">
+          <span class="ru-section-num">06</span><span class="ru-section-title">Next Up</span>
+          <span class="ru-section-sub"></span>
+        </div>
+        <ul class="ru-clean">
+          <li><b style="color:var(--text);">Top priority:</b> pick the next feature with Chris — leading candidates are Timeline UI (Feature 5), Undo/Redo (Feature 9), and rounding out Plugin Manager with a deactivate/event-bus hook and a plugins UI (Feature 13)</li>
+          <li>Export &amp; Open in Blender remain Phase 7 territory, intentionally deferred</li>
+        </ul>
+      </div>
+      <div>
+        <div class="ru-section-head" style="margin-top:0;">
+          <span class="ru-section-num">07</span><span class="ru-section-title">Still Ahead</span>
+          <span class="ru-section-sub"></span>
+        </div>
+        <ul class="ru-clean muted">
+          <li>Timeline UI — thumbnails, select/replace/delete/duplicate/notes/markers (Feature 5)</li>
+          <li>Undo / Redo (Feature 9)</li>
+          <li>Plugin Manager follow-ups — deactivate hook, event-bus access, plugins UI (Feature 13)</li>
+          <li>Blender bridge — the flagship feature (Phase 7)</li>
+          <li>.exe packaging via PyInstaller (Phase 8)</li>
+          <li>CI, CONTRIBUTING.md, issue templates (Phase 9)</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <span class="brand-name">Frame<b>Labs</b></span>
+      <div class="footer-fine">Open-source · MIT licensed · Windows / macOS / Linux</div>
+    </div>
+    <div class="footer-links">
+      <a href="#home" data-page="home">Home</a>
+      <a href="#features" data-page="features">Features</a>
+      <a href="#docs" data-page="docs">Docs</a>
+      <a href="#updates" data-page="updates">Live Updates</a>
+      <a href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var pages = ['home','features','docs','updates'];
+  var nav = document.getElementById('siteNav');
+  var toggle = document.getElementById('navToggle');
+
+  function showPage(name, scrollTo){
+    if(pages.indexOf(name) === -1) name = 'home';
+    pages.forEach(function(p){
+      document.getElementById('page-'+p).classList.toggle('active', p === name);
+    });
+    document.querySelectorAll('.nav-links a[data-page]').forEach(function(a){
+      a.classList.toggle('active', a.getAttribute('data-page') === name);
+    });
+    nav.classList.remove('open');
+    if(scrollTo){
+      requestAnimationFrame(function(){
+        var el = document.getElementById(scrollTo);
+        if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    } else {
+      window.scrollTo({top:0, behavior:'instant' in window ? 'instant' : 'auto'});
+    }
+  }
+
+  document.querySelectorAll('[data-page]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.preventDefault();
+      var target = el.getAttribute('data-page');
+      var scrollTo = el.getAttribute('data-scroll');
+      try{ history.replaceState(null, '', '#'+target); }catch(err){ /* sandboxed preview, ignore */ }
+      showPage(target, scrollTo);
+    });
+  });
+
+  toggle.addEventListener('click', function(){
+    nav.classList.toggle('open');
+  });
+
+  var initial = 'home';
+  try{ initial = (location.hash || '#home').replace('#',''); }catch(err){ /* ignore */ }
+  showPage(initial);
+})();
+</script>
+</body>
+</html>
