@@ -10,9 +10,14 @@ feature" -- so failure handling here matters more than almost anywhere
 else in the codebase. See module-level docstrings in frame_writer.py and
 metadata.py for the guarantees each of those modules makes; this module
 ties them together with CameraManager and ProjectSerializer.
+
+Also implements Feature 5's delete/replace/duplicate frame actions
+(delete_frame, replace_frame, duplicate_frame), since they share the same
+capture/write pipeline and file-layout knowledge as capture_frame itself.
 """
 
 import logging
+import shutil
 
 from framelabs.camera.camera_interface import CameraError
 from framelabs.camera.camera_manager import CameraManager
@@ -53,6 +58,15 @@ class DiskFullServiceError(CaptureServiceError):
     """
 
 
+class FrameNotFoundError(CaptureServiceError):
+    """Raised when delete/replace/duplicate is given a frame_number that
+    doesn't exist in the project.
+
+    A subclass of CaptureServiceError, not a sibling -- any existing
+    caller that catches CaptureServiceError still catches this too.
+    """
+
+
 def capture_frame(
     project: Project, camera_manager: CameraManager, event_bus: EventBus
 ) -> Frame:
@@ -87,6 +101,170 @@ def capture_frame(
 
     frame_number = _next_frame_number(project)
 
+    _write_captured_image(project, camera_manager, frame_number)
+
+    # Update timeline
+    frame = Frame(number=frame_number, file=f"images/{frame_number:06d}.png")
+    project.frames.append(frame)
+
+    # Autosave
+    ProjectSerializer.save(project)
+
+    # Emit FRAME_CAPTURED
+    event_bus.publish("FRAME_CAPTURED", {"frame_number": frame_number})
+    logger.info("Captured frame %d", frame_number)
+
+    return frame
+
+
+def replace_frame(
+    project: Project,
+    camera_manager: CameraManager,
+    event_bus: EventBus,
+    frame_number: int,
+) -> Frame:
+    """Replace an existing frame's image with a freshly captured one.
+
+    Per Feature 5's spec, the frame number stays the same -- only the
+    image, thumbnail, and metadata files are overwritten. The existing
+    Frame's notes and marker are left untouched, since replacing the
+    photo isn't the same operation as editing those fields.
+
+    Args:
+        project: The active project. Must have a non-None project_path.
+        camera_manager: The CameraManager whose active camera will be
+            triggered.
+        event_bus: The event bus FRAME_REPLACED will be published on.
+        frame_number: The existing frame to replace.
+
+    Returns:
+        The same Frame instance that was already in project.frames,
+        unchanged except for the files on disk now being newer.
+
+    Raises:
+        ValueError: If project.project_path is None.
+        FrameNotFoundError: If no frame with frame_number exists.
+        CaptureServiceError: If the camera trigger fails, or if
+            frame_writer cannot produce a valid written image after its
+            own internal retry. The original frame's files are left
+            exactly as they were if the new capture never got as far as
+            overwriting them.
+        DiskFullServiceError: If the frame image write failed after
+            retry specifically because the disk is full. A subclass of
+            CaptureServiceError.
+    """
+    if project.project_path is None:
+        raise ValueError("project.project_path is None; cannot replace frame")
+
+    frame = _find_frame(project, frame_number)
+
+    _write_captured_image(project, camera_manager, frame_number)
+
+    ProjectSerializer.save(project)
+
+    event_bus.publish("FRAME_REPLACED", {"frame_number": frame_number})
+    logger.info("Replaced frame %d", frame_number)
+
+    return frame
+
+
+def duplicate_frame(project: Project, event_bus: EventBus, frame_number: int) -> Frame:
+    """Duplicate an existing frame's image/thumbnail/metadata as a new frame.
+
+    The duplicate is appended to the end of the sequence under the next
+    available frame number, matching how capture_frame already numbers
+    new frames -- inserting a duplicate adjacent to its source would
+    require reordering, which the Feature Specification explicitly marks
+    "(future)". The duplicate's notes are copied from the source (useful
+    context to keep), but its marker is reset to False, since a marker
+    flags a specific, deliberately-chosen frame rather than a property
+    that should propagate to copies.
+
+    Args:
+        project: The active project. Must have a non-None project_path.
+        event_bus: The event bus FRAME_DUPLICATED will be published on.
+        frame_number: The existing frame to duplicate.
+
+    Returns:
+        The newly created Frame, already appended to project.frames.
+
+    Raises:
+        ValueError: If project.project_path is None.
+        FrameNotFoundError: If no frame with frame_number exists.
+        CaptureServiceError: If the source frame's image file can't be
+            copied. Thumbnail/metadata copy failures are logged and
+            skipped instead, matching capture_frame's own treatment of
+            thumbnails/metadata as non-fatal derived data.
+    """
+    if project.project_path is None:
+        raise ValueError("project.project_path is None; cannot duplicate frame")
+
+    source = _find_frame(project, frame_number)
+    new_number = _next_frame_number(project)
+
+    _copy_frame_files(project, frame_number, new_number)
+
+    new_frame = Frame(
+        number=new_number,
+        file=f"images/{new_number:06d}.png",
+        notes=source.notes,
+        marker=False,
+    )
+    project.frames.append(new_frame)
+
+    ProjectSerializer.save(project)
+
+    event_bus.publish(
+        "FRAME_DUPLICATED",
+        {"source_frame_number": frame_number, "new_frame_number": new_number},
+    )
+    logger.info("Duplicated frame %d as frame %d", frame_number, new_number)
+
+    return new_frame
+
+
+def delete_frame(project: Project, event_bus: EventBus, frame_number: int) -> None:
+    """Delete a frame's files and remove it from the project's timeline.
+
+    Args:
+        project: The active project. Must have a non-None project_path.
+        event_bus: The event bus FRAME_DELETED will be published on.
+        frame_number: The frame to delete.
+
+    Raises:
+        ValueError: If project.project_path is None.
+        FrameNotFoundError: If no frame with frame_number exists.
+    """
+    if project.project_path is None:
+        raise ValueError("project.project_path is None; cannot delete frame")
+
+    frame = _find_frame(project, frame_number)
+
+    _delete_frame_files(project, frame_number)
+    project.frames.remove(frame)
+
+    ProjectSerializer.save(project)
+
+    event_bus.publish("FRAME_DELETED", {"frame_number": frame_number})
+    logger.info("Deleted frame %d", frame_number)
+
+
+def _write_captured_image(
+    project: Project, camera_manager: CameraManager, frame_number: int
+) -> None:
+    """Run the shared trigger/verify/write/thumbnail/metadata pipeline.
+
+    Shared by capture_frame (new frame) and replace_frame (existing frame
+    number, overwritten files), so the two can never silently drift apart
+    in how a captured image actually gets to disk.
+
+    Raises:
+        CaptureServiceError: If the camera trigger fails, or if
+            frame_writer cannot produce a valid written image after its
+            own internal retry.
+        DiskFullServiceError: If the frame image write failed after
+            retry specifically because the disk is full.
+    """
     # Trigger + Receive
     try:
         image_bytes = camera_manager.capture()
@@ -126,26 +304,81 @@ def capture_frame(
     # from metadata.py's own no-retry-internally rule).
     _write_metadata_with_one_retry(project, frame_number, camera_manager)
 
-    # Update timeline
-    frame = Frame(number=frame_number, file=f"images/{frame_number:06d}.png")
-    project.frames.append(frame)
 
-    # Autosave
-    ProjectSerializer.save(project)
+def _find_frame(project: Project, frame_number: int) -> Frame:
+    """Return the Frame with the given number, or raise FrameNotFoundError."""
+    for frame in project.frames:
+        if frame.number == frame_number:
+            return frame
+    raise FrameNotFoundError(f"No frame numbered {frame_number} in project.")
 
-    # Emit FRAME_CAPTURED
-    event_bus.publish("FRAME_CAPTURED", {"frame_number": frame_number})
-    logger.info("Captured frame %d", frame_number)
 
-    return frame
+def _copy_frame_files(project: Project, source_number: int, dest_number: int) -> None:
+    """Copy a frame's image, thumbnail, and metadata files to a new frame number.
+
+    The image copy is treated as mandatory -- a duplicate with no image
+    isn't a real frame, so a failure here raises. Thumbnail and metadata
+    are treated the same as capture_frame treats them: missing or
+    uncopyable is logged and skipped, never fatal.
+    """
+    src_image = project.project_path / "images" / f"{source_number:06d}.png"
+    dst_image = project.project_path / "images" / f"{dest_number:06d}.png"
+    try:
+        shutil.copy2(src_image, dst_image)
+    except OSError as exc:
+        raise CaptureServiceError(
+            f"Failed to duplicate frame {source_number}'s image: {exc}"
+        ) from exc
+
+    src_thumb = project.project_path / "thumbnails" / f"{source_number:06d}.jpg"
+    dst_thumb = project.project_path / "thumbnails" / f"{dest_number:06d}.jpg"
+    if src_thumb.exists():
+        try:
+            shutil.copy2(src_thumb, dst_thumb)
+        except OSError as exc:
+            logger.warning(
+                "Failed to duplicate thumbnail for frame %d: %s", source_number, exc
+            )
+
+    src_meta = project.project_path / "metadata" / f"{source_number:06d}.json"
+    dst_meta = project.project_path / "metadata" / f"{dest_number:06d}.json"
+    if src_meta.exists():
+        try:
+            shutil.copy2(src_meta, dst_meta)
+        except OSError as exc:
+            logger.warning(
+                "Failed to duplicate metadata for frame %d: %s", source_number, exc
+            )
+
+
+def _delete_frame_files(project: Project, frame_number: int) -> None:
+    """Delete a frame's image, thumbnail, and metadata files, if present.
+
+    Missing files are not errors -- e.g. a frame whose thumbnail
+    generation previously failed (see _write_captured_image's
+    thumbnail-failure handling) legitimately has no thumbnail to delete.
+    """
+    targets = (
+        project.project_path / "images" / f"{frame_number:06d}.png",
+        project.project_path / "thumbnails" / f"{frame_number:06d}.jpg",
+        project.project_path / "metadata" / f"{frame_number:06d}.json",
+    )
+    for path in targets:
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError as exc:
+                logger.warning("Failed to delete %s: %s", path, exc)
 
 
 def _next_frame_number(project: Project) -> int:
     """Compute the next frame number as max(existing, default=0) + 1.
 
-    Deliberately not len(frames) + 1, so numbering stays correct once
-    delete/replace exist (Feature 4's "no duplicate frame numbers"
-    acceptance criterion).
+    Deliberately not len(frames) + 1, so numbering stays correct with
+    delete/duplicate now in play (Feature 4's "no duplicate frame
+    numbers" acceptance criterion) -- e.g. deleting the last frame and
+    capturing again must not reissue a number still referenced by a
+    duplicate made earlier.
     """
     if not project.frames:
         return 1
