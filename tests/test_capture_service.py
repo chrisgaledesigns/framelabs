@@ -8,7 +8,11 @@ from framelabs.camera.camera_interface import CameraError, CameraMetadata
 from framelabs.capture.capture_service import (
     CaptureServiceError,
     DiskFullServiceError,
+    FrameNotFoundError,
     capture_frame,
+    delete_frame,
+    duplicate_frame,
+    replace_frame,
 )
 from framelabs.capture.frame_writer import CaptureWriteError, DiskFullError
 from framelabs.capture.metadata import MetadataWriteError
@@ -240,3 +244,149 @@ def test_capture_frame_numbering_increments_across_captures(tmp_path):
     assert frame2.number == 2
     assert [f.number for f in project.frames] == [1, 2]
     assert received == [{"frame_number": 1}, {"frame_number": 2}]
+
+
+def test_delete_frame_removes_frame_and_files(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+
+    delete_received = []
+    event_bus.subscribe(
+        "FRAME_DELETED", lambda payload: delete_received.append(payload)
+    )
+
+    delete_frame(project, event_bus, frame.number)
+
+    assert project.frames == []
+    assert not (project.project_path / "images" / "000001.png").exists()
+    assert not (project.project_path / "thumbnails" / "000001.jpg").exists()
+    assert not (project.project_path / "metadata" / "000001.json").exists()
+    assert delete_received == [{"frame_number": 1}]
+
+
+def test_delete_frame_missing_number_raises_frame_not_found(tmp_path):
+    project = _make_project(tmp_path)
+    event_bus, _ = _make_event_bus()
+
+    with pytest.raises(FrameNotFoundError):
+        delete_frame(project, event_bus, 99)
+
+
+def test_delete_frame_tolerates_already_missing_thumbnail(tmp_path, monkeypatch):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+
+    def _boom(*args, **kwargs):
+        raise CaptureWriteError("simulated thumbnail failure")
+
+    monkeypatch.setattr("framelabs.capture.capture_service.generate_thumbnail", _boom)
+    frame = capture_frame(project, camera_manager, event_bus)
+    assert not (project.project_path / "thumbnails" / "000001.jpg").exists()
+
+    # Should not raise even though the thumbnail never existed.
+    delete_frame(project, event_bus, frame.number)
+
+    assert project.frames == []
+
+
+def test_replace_frame_keeps_number_notes_and_marker_overwrites_image(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+    frame.notes = "storyboard note"
+    frame.marker = True
+
+    replace_received = []
+    event_bus.subscribe(
+        "FRAME_REPLACED", lambda payload: replace_received.append(payload)
+    )
+
+    replaced = replace_frame(project, camera_manager, event_bus, frame.number)
+
+    assert replaced is frame
+    assert replaced.number == 1
+    assert replaced.notes == "storyboard note"
+    assert replaced.marker is True
+    assert len(project.frames) == 1
+    assert camera_manager.capture_call_count == 2
+    assert (project.project_path / "images" / "000001.png").exists()
+    assert replace_received == [{"frame_number": 1}]
+
+
+def test_replace_frame_missing_number_raises_frame_not_found(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+
+    with pytest.raises(FrameNotFoundError):
+        replace_frame(project, camera_manager, event_bus, 1)
+
+
+def test_replace_frame_camera_failure_raises_and_keeps_original_frame(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+
+    camera_manager.capture_should_fail = True
+
+    with pytest.raises(CaptureServiceError):
+        replace_frame(project, camera_manager, event_bus, frame.number)
+
+    assert project.frames == [frame]
+
+
+def test_duplicate_frame_creates_new_numbered_copy(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+    frame.notes = "keyframe"
+
+    dup_received = []
+    event_bus.subscribe(
+        "FRAME_DUPLICATED", lambda payload: dup_received.append(payload)
+    )
+
+    duplicate = duplicate_frame(project, event_bus, frame.number)
+
+    assert duplicate.number == 2
+    assert duplicate.file == "images/000002.png"
+    assert duplicate.notes == "keyframe"
+    assert duplicate.marker is False
+    assert [f.number for f in project.frames] == [1, 2]
+    assert (project.project_path / "images" / "000002.png").exists()
+    assert (project.project_path / "thumbnails" / "000002.jpg").exists()
+    assert (project.project_path / "metadata" / "000002.json").exists()
+    assert dup_received == [{"source_frame_number": 1, "new_frame_number": 2}]
+
+
+def test_duplicate_frame_missing_number_raises_frame_not_found(tmp_path):
+    project = _make_project(tmp_path)
+    event_bus, _ = _make_event_bus()
+
+    with pytest.raises(FrameNotFoundError):
+        duplicate_frame(project, event_bus, 1)
+
+
+def test_duplicate_frame_missing_thumbnail_still_succeeds(tmp_path, monkeypatch):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+
+    def _boom(*args, **kwargs):
+        raise CaptureWriteError("simulated thumbnail failure")
+
+    monkeypatch.setattr("framelabs.capture.capture_service.generate_thumbnail", _boom)
+    frame = capture_frame(project, camera_manager, event_bus)
+    assert not (project.project_path / "thumbnails" / "000001.jpg").exists()
+
+    duplicate = duplicate_frame(project, event_bus, frame.number)
+
+    assert duplicate.number == 2
+    assert not (project.project_path / "thumbnails" / "000002.jpg").exists()
+    assert (project.project_path / "images" / "000002.png").exists()
