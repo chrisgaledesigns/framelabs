@@ -15,6 +15,7 @@ orchestration lives in capture_service.py.
 from __future__ import annotations
 
 import errno
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -97,6 +98,16 @@ def _write_with_retry(path: Path, write_fn: Callable[[Path], bool]) -> None:
 def write_frame(image_bytes: bytes, project: Project, frame_number: int) -> Path:
     """Verify and write a captured frame as a PNG into the project's images folder.
 
+    Writes to a temporary file first, then atomically replaces the real
+    destination with os.replace() only after the write fully succeeds.
+    This matters beyond capture_frame's original use of this function:
+    replace_frame (Feature 5) now calls this against a frame_number that
+    already has a valid image on disk, and per the Developer Handbook's
+    "Never Lose User Data" principle, a failed write must never destroy
+    that existing, still-good frame. Writing straight to the destination
+    (the prior approach) would truncate it immediately on the first
+    attempt, before success is known.
+
     Args:
         image_bytes: Raw encoded image data as returned by
             CameraInterface.capture().
@@ -109,7 +120,9 @@ def write_frame(image_bytes: bytes, project: Project, frame_number: int) -> Path
     Raises:
         CaptureWriteError: If project.project_path is None, the image data
             cannot be decoded, or writing to disk fails even after one
-            retry.
+            retry. Any temp file created during a failed attempt is
+            cleaned up; the real destination (if it already existed) is
+            left untouched.
         DiskFullError: If writing to disk fails after one retry
             specifically because the disk is full. A subclass of
             CaptureWriteError.
@@ -120,7 +133,18 @@ def write_frame(image_bytes: bytes, project: Project, frame_number: int) -> Path
     image = _decode_image(image_bytes)
 
     output_path = project.project_path / "images" / f"{frame_number:06d}.png"
-    _write_with_retry(output_path, lambda path: cv2.imwrite(str(path), image))
+    # cv2.imwrite picks its encoder from the file extension, so the temp
+    # name keeps ".png" as the actual suffix (".tmp" goes in the stem
+    # instead) -- a temp path ending in a plain ".tmp" extension would
+    # make cv2.imwrite fail to encode at all.
+    temp_path = output_path.with_name(f"{output_path.stem}.tmp{output_path.suffix}")
+    try:
+        _write_with_retry(temp_path, lambda path: cv2.imwrite(str(path), image))
+    except CaptureWriteError:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    os.replace(temp_path, output_path)
 
     return output_path
 

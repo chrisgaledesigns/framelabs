@@ -80,13 +80,29 @@ def test_write_frame_retries_once_then_succeeds(tmp_path):
     project = _make_project(tmp_path)
     image_bytes = _real_png_bytes()
 
+    # write_frame now writes to a temp file and os.replace()'s it into place,
+    # so the mock's "successful" call must actually create a real file on
+    # disk -- just faking the True return value (as the old version of this
+    # test did) leaves nothing for os.replace() to find. real_imwrite is
+    # captured before patching so the fake can still perform a genuine write
+    # on the second call without recursing into itself.
+    real_imwrite = cv2.imwrite
+    call_count = {"count": 0}
+
+    def fake_imwrite(path, img, *args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] == 1:
+            return False
+        return real_imwrite(path, img, *args, **kwargs)
+
     with patch(
-        "framelabs.capture.frame_writer.cv2.imwrite", side_effect=[False, True]
+        "framelabs.capture.frame_writer.cv2.imwrite", side_effect=fake_imwrite
     ) as mock_imwrite:
         result_path = write_frame(image_bytes, project, 1)
 
     assert mock_imwrite.call_count == 2
     assert result_path == tmp_path / "images" / "000001.png"
+    assert result_path.exists()
 
 
 def test_write_frame_fails_after_retry_exhausted(tmp_path):
