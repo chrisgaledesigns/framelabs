@@ -9,13 +9,20 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
-from framelabs.capture.commands import DuplicateFrameCommand
+from framelabs.capture.commands import (
+    DeleteFrameCommand,
+    DuplicateFrameCommand,
+    ReplaceFrameCommand,
+    SetFrameNotesCommand,
+    ToggleFrameMarkerCommand,
+)
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
 from framelabs.project.project import Project
@@ -31,7 +38,11 @@ from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_controller import ProjectController
-from framelabs.ui.timeline_widget import PlaybackControls, TimelineWidget
+from framelabs.ui.timeline_widget import (
+    FrameActionBar,
+    PlaybackControls,
+    TimelineWidget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +60,12 @@ class MainWindow(QMainWindow):
         self.onion_settings = OnionSkinSettings()
         self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
-        # Feature 9. Commands run synchronously on the main thread for now
-        # (see _on_duplicate_frame's docstring) -- known, flagged
-        # simplification, not an oversight.
+        # Feature 9. Duplicate/Delete/Marker/Notes commands run
+        # synchronously on the main thread (see _duplicate_frame's
+        # docstring) -- known, flagged simplification, not an oversight.
+        # ReplaceFrameCommand is the one exception: its do() triggers a
+        # real camera capture, so it runs on CaptureController's worker
+        # thread instead (see _replace_frame's docstring).
         self.undo_manager = UndoManager()
         # Set True as the very first thing closeEvent() does. Guards
         # _refresh_onion_skin() against firing once worker-thread teardown
@@ -69,6 +83,7 @@ class MainWindow(QMainWindow):
         self._start_playback_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
+        self._wire_frame_action_bar()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -101,12 +116,11 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(False)
         self.redo_action.triggered.connect(self._on_redo)
 
-        # Feature 5. Temporary Edit-menu home for Duplicate Frame, per
-        # Chris's call -- the real UI (right-click menu / selection action
-        # bar) doesn't exist yet. Ctrl+D isn't in the Feature Spec's
-        # defaults list; chosen here as the conventional "duplicate"
-        # shortcut on both Windows and macOS. Revisit once Feature 12's
-        # shortcuts are genuinely configurable.
+        # Feature 5. Temporary Edit-menu home for Duplicate Frame, from
+        # before FrameActionBar/the right-click menu existed. Left in
+        # place deliberately -- now arguably redundant with the action
+        # bar's Duplicate button, but removing a working shortcut/menu
+        # entry is a UI call for Chris, not something to drop silently.
         self.duplicate_frame_action = QAction("Duplicate Frame", self)
         self.duplicate_frame_action.setShortcut(QKeySequence("Ctrl+D"))
         self.duplicate_frame_action.triggered.connect(self._on_duplicate_frame)
@@ -188,7 +202,8 @@ class MainWindow(QMainWindow):
 
     def _build_central_panes(self) -> None:
         """Construct the full central area: the three-pane splitter on top,
-        with the Timeline strip and Playback controls stacked below it.
+        with the Timeline strip, the per-frame action bar, and Playback
+        controls stacked below it.
         """
         self.project_browser_placeholder = self._make_placeholder("Project Browser")
         self.live_view_widget = LiveViewWidget()
@@ -209,6 +224,7 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(2, 1)
 
         self.timeline_widget = TimelineWidget()
+        self.frame_action_bar = FrameActionBar()
         self.playback_controls = PlaybackControls()
 
         central_widget = QWidget()
@@ -216,6 +232,7 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.addWidget(splitter, 1)
         central_layout.addWidget(self.timeline_widget)
+        central_layout.addWidget(self.frame_action_bar)
         central_layout.addWidget(self.playback_controls)
 
         self.setCentralWidget(central_widget)
@@ -248,7 +265,7 @@ class MainWindow(QMainWindow):
         background camera-availability poll happening simultaneously on
         the same thread could contend with each other. Shares the SAME
         CameraManager instance camera_controller already owns, so capture
-        triggers the actual connected camera.
+        (and Replace, per Feature 5) triggers the actual connected camera.
         """
         self._capture_thread = QThread(self)
         self.capture_controller = CaptureController(
@@ -259,6 +276,8 @@ class MainWindow(QMainWindow):
         self.capture_controller.capture_succeeded.connect(self._on_capture_succeeded)
         self.capture_controller.capture_failed.connect(self._on_capture_failed)
         self.capture_controller.disk_full.connect(self._on_disk_full)
+        self.capture_controller.replace_succeeded.connect(self._on_replace_succeeded)
+        self.capture_controller.replace_failed.connect(self._on_replace_failed)
 
         self._capture_thread.start()
 
@@ -368,11 +387,30 @@ class MainWindow(QMainWindow):
 
         TimelineWidget holds no Timeline/Project of its own (see its own
         docstring) -- it only emits frame_selected with a raw index when a
-        thumbnail is clicked. MainWindow owns self.timeline and is
-        responsible for translating that index into an actual playhead
-        move via Timeline.go_to_index().
+        thumbnail is clicked, and frame_context_menu_requested with a raw
+        index + global position on right-click. MainWindow owns
+        self.timeline and is responsible for translating an index into
+        either an actual playhead move (Timeline.go_to_index()) or the
+        real Frame it refers to (self.timeline.frames[index]).
         """
         self.timeline_widget.frame_selected.connect(self._on_frame_selected)
+        self.timeline_widget.frame_context_menu_requested.connect(
+            self._on_frame_context_menu_requested
+        )
+
+    def _wire_frame_action_bar(self) -> None:
+        """Connect FrameActionBar's controls to real per-frame actions.
+
+        FrameActionBar holds no Project/Timeline/Frame of its own (see its
+        own docstring) -- every handler here reads whichever frame is
+        currently selected (self.timeline.current_frame) at the moment the
+        control is used, rather than trusting a value captured earlier.
+        """
+        self.frame_action_bar.delete_button.clicked.connect(self._on_delete_frame)
+        self.frame_action_bar.replace_button.clicked.connect(self._on_replace_frame)
+        self.frame_action_bar.duplicate_button.clicked.connect(self._on_duplicate_frame)
+        self.frame_action_bar.marker_button.clicked.connect(self._on_toggle_marker)
+        self.frame_action_bar.notes_edit.editingFinished.connect(self._on_notes_edited)
 
     def _on_frame_selected(self, index: int) -> None:
         """React to a thumbnail click in the Timeline strip.
@@ -381,28 +419,66 @@ class MainWindow(QMainWindow):
         pattern as _refresh_onion_skin(); TimelineWidget shouldn't be able
         to emit a click with no timeline behind it, but this keeps the
         handler safe regardless. Moves the playhead to the clicked frame's
-        index, then refreshes both Onion Skin and the Timeline strip
-        itself so the new selection border appears immediately.
+        index, then refreshes Onion Skin, the Timeline strip's selection
+        border, and the action bar so it reflects the newly selected frame.
         """
         if self.timeline is None:
             return
         self.timeline.go_to_index(index)
         self._refresh_onion_skin()
         self._move_timeline_playhead()
+        self._refresh_frame_action_bar()
+
+    def _on_frame_context_menu_requested(self, index: int, global_pos) -> None:
+        """Show Feature 5's right-click menu for a timeline thumbnail.
+
+        Right-clicking a frame that isn't currently selected first moves
+        the playhead to it (same as a left-click would), so the action
+        bar and the selection border both reflect the frame the menu is
+        about to act on -- the menu and the action bar are two surfaces
+        for the same underlying actions, per the hand-off's dependency
+        note, so they should never disagree about which frame is current.
+        """
+        if self.timeline is None:
+            return
+        self.timeline.go_to_index(index)
+        self._refresh_onion_skin()
+        self._move_timeline_playhead()
+        self._refresh_frame_action_bar()
+
+        frame = self.timeline.frames[index]
+
+        menu = QMenu(self)
+        delete_action = menu.addAction("Delete")
+        replace_action = menu.addAction("Replace")
+        duplicate_action = menu.addAction("Duplicate")
+        marker_action = menu.addAction(
+            "Remove Marker" if frame.marker else "Add Marker"
+        )
+        chosen = menu.exec(global_pos)
+
+        if chosen is delete_action:
+            self._delete_frame(frame.number)
+        elif chosen is replace_action:
+            self._replace_frame(frame.number)
+        elif chosen is duplicate_action:
+            self._duplicate_frame(frame.number)
+        elif chosen is marker_action:
+            self._toggle_marker(frame.number)
 
     def _refresh_timeline_widget(self) -> None:
         """Rebuild the Timeline strip to match the current project/timeline.
 
         Rebuilds every thumbnail from scratch (disk read + QPixmap scale
         per frame) -- only call this when the frame list itself has
-        changed (new project, opened project, capture succeeded). For a
-        playhead-only move, call _move_timeline_playhead() instead, which
-        is much cheaper and does no disk I/O -- critical during playback,
-        which can tick many times per second. No-op if there's no active
-        project/timeline yet -- same guard pattern as
-        _refresh_onion_skin(). Thumbnails live in project_path/
-        "thumbnails", per the project folder layout established in
-        Feature 1 and project.py's Project docstring.
+        changed (new project, opened project, capture succeeded, delete,
+        replace, duplicate, undo, redo). For a playhead-only move, call
+        _move_timeline_playhead() instead, which is much cheaper and does
+        no disk I/O -- critical during playback, which can tick many times
+        per second. No-op if there's no active project/timeline yet --
+        same guard pattern as _refresh_onion_skin(). Thumbnails live in
+        project_path/"thumbnails", per the project folder layout
+        established in Feature 1 and project.py's Project docstring.
         """
         if self.project is None or self.timeline is None:
             return
@@ -427,6 +503,18 @@ class MainWindow(QMainWindow):
         if self.project is None or self.timeline is None:
             return
         self.timeline_widget.set_current_index(self.timeline.current_index)
+
+    def _refresh_frame_action_bar(self) -> None:
+        """Sync FrameActionBar's controls to whichever frame is now current.
+
+        No active project/timeline, or an empty timeline, both correctly
+        resolve to Timeline.current_frame being None -- FrameActionBar's
+        own set_current_frame(None) already disables and clears every
+        control for exactly that case (see its docstring), so no separate
+        guard is needed here.
+        """
+        current_frame = self.timeline.current_frame if self.timeline else None
+        self.frame_action_bar.set_current_frame(current_frame)
 
     def _refresh_onion_skin(self) -> None:
         """Ask the onion skin worker thread to reload overlay frames.
@@ -528,27 +616,29 @@ class MainWindow(QMainWindow):
         self.live_view_controller.resume_requested.emit()
 
     def _on_playback_playhead_advanced(self) -> None:
-        """Keep Onion Skin and the Timeline strip in sync while Playback
-        moves the same Timeline.current_index they both read from.
+        """Keep Onion Skin, the Timeline strip, and the action bar in sync
+        while Playback moves the same Timeline.current_index they all read
+        from.
 
-        Without this, Onion Skin and the Timeline strip's selection border
-        would only ever refresh on capture or a manual click -- once Play
-        starts moving the playhead on its own, both would go stale and
-        stop matching the frame actually on screen.
-        _refresh_onion_skin()/_refresh_timeline_widget() already no-op
-        safely if disabled/empty or if the window is shutting down, so
-        this is safe to call unconditionally on every tick.
+        Without this, Onion Skin, the Timeline strip's selection border,
+        and the action bar would only ever refresh on capture or a manual
+        click -- once Play starts moving the playhead on its own, all
+        three would go stale and stop matching the frame actually on
+        screen. The refresh helpers already no-op safely if disabled/empty
+        or if the window is shutting down, so this is safe to call
+        unconditionally on every tick.
         """
         self._refresh_onion_skin()
         self._move_timeline_playhead()
+        self._refresh_frame_action_bar()
 
     def _on_previous_frame(self) -> None:
         """Step the playhead back one frame, per Feature 12's Left Arrow.
 
         No-op with a log line if there's no active project yet -- same
         guard pattern as _on_capture()/_on_toggle_play(). Refreshes Onion
-        Skin and the Timeline strip afterward since the playhead moved,
-        the same way _on_playback_playhead_advanced() does.
+        Skin, the Timeline strip, and the action bar afterward since the
+        playhead moved, the same way _on_playback_playhead_advanced() does.
         """
         if self.timeline is None:
             logger.warning("Previous frame requested with no active project; ignoring")
@@ -556,6 +646,7 @@ class MainWindow(QMainWindow):
         self.timeline.previous_frame()
         self._refresh_onion_skin()
         self._move_timeline_playhead()
+        self._refresh_frame_action_bar()
 
     def _on_next_frame(self) -> None:
         """Step the playhead forward one frame, per Feature 12's Right Arrow.
@@ -568,15 +659,30 @@ class MainWindow(QMainWindow):
         self.timeline.next_frame()
         self._refresh_onion_skin()
         self._move_timeline_playhead()
+        self._refresh_frame_action_bar()
 
     def _on_duplicate_frame(self) -> None:
-        """Duplicate the currently-selected frame, per Feature 5/9.
+        """Duplicate the currently-selected frame -- Edit menu / Ctrl+D /
+        action bar Duplicate button all land here.
 
         No-op with a log line if there's no active project or no frame
-        selected -- same guard pattern as _on_capture(). Runs
-        DuplicateFrameCommand.do() synchronously on the main thread rather
-        than on a worker thread the way capture/save/load do -- a known,
-        deliberately flagged simplification (see hand-off), not an
+        selected -- same guard pattern as _on_capture().
+        """
+        if self.project is None or self.timeline is None:
+            logger.warning("Duplicate Frame requested with no active project; ignoring")
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            logger.warning("Duplicate Frame requested with no frame selected; ignoring")
+            return
+        self._duplicate_frame(frame.number)
+
+    def _duplicate_frame(self, frame_number: int) -> None:
+        """Duplicate `frame_number`, undoably, and select the new duplicate.
+
+        Runs DuplicateFrameCommand.do() synchronously on the main thread
+        rather than on a worker thread the way capture/replace do -- a
+        known, deliberately flagged simplification (see hand-off), not an
         oversight; duplicate_frame() is a same-project file copy, cheap
         enough in practice that this hasn't been worth the extra
         worker-thread plumbing yet, but should move to one if real-world
@@ -586,21 +692,168 @@ class MainWindow(QMainWindow):
         _on_capture_succeeded() always selects the newest frame after a
         capture -- a duplicate is a new frame the user just asked for, so
         it should be the one now on screen, the same way a fresh capture
-        is.
+        is. Shared by the Edit menu/Ctrl+D, the action bar's Duplicate
+        button, and the right-click menu's Duplicate entry.
         """
-        if self.project is None or self.timeline is None:
-            logger.warning("Duplicate Frame requested with no active project; ignoring")
-            return
-        frame = self.timeline.current_frame
-        if frame is None:
-            logger.warning("Duplicate Frame requested with no frame selected; ignoring")
-            return
-        command = DuplicateFrameCommand(self.project, self.event_bus, frame.number)
+        command = DuplicateFrameCommand(self.project, self.event_bus, frame_number)
         self.undo_manager.execute(command)
         self._update_undo_redo_actions()
         self.timeline.go_to_index(len(self.timeline) - 1)
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
+
+    def _on_delete_frame(self) -> None:
+        """Delete the currently-selected frame -- action bar Delete button."""
+        if self.project is None or self.timeline is None:
+            logger.warning("Delete Frame requested with no active project; ignoring")
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            logger.warning("Delete Frame requested with no frame selected; ignoring")
+            return
+        self._delete_frame(frame.number)
+
+    def _delete_frame(self, frame_number: int) -> None:
+        """Confirm, then delete `frame_number`, undoably.
+
+        Shows Feature 5's exact confirmation dialog ("Delete Frame N? /
+        Undo Available") before doing anything -- deletion is destructive
+        enough (real files removed from disk) to warrant confirmation even
+        though it's undoable. Runs DeleteFrameCommand.do() synchronously
+        on the main thread, same reasoning as _duplicate_frame() -- a
+        delete is just file removal, no camera involved. Shared by the
+        action bar's Delete button and the right-click menu's Delete entry.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Delete Frame")
+        box.setText(f"Delete Frame {frame_number}?")
+        box.setInformativeText("Undo Available")
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        command = DeleteFrameCommand(self.project, self.event_bus, frame_number)
+        self.undo_manager.execute(command)
+        self._update_undo_redo_actions()
+        self.timeline.go_to_index(self.timeline.current_index)
+        self._refresh_onion_skin()
+        self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
+
+    def _on_replace_frame(self) -> None:
+        """Replace the currently-selected frame -- action bar Replace button."""
+        if self.project is None or self.timeline is None:
+            logger.warning("Replace Frame requested with no active project; ignoring")
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            logger.warning("Replace Frame requested with no frame selected; ignoring")
+            return
+        self._replace_frame(frame.number)
+
+    def _replace_frame(self, frame_number: int) -> None:
+        """Trigger a real camera capture to replace `frame_number`'s image.
+
+        Unlike Duplicate/Delete, ReplaceFrameCommand.do() triggers a real
+        camera capture (see capture_service.replace_frame), so per the
+        Developer Handbook's "UI Never Blocks" rule it can't run
+        synchronously here -- it's handed to CaptureController's worker
+        thread instead. Recorded on UndoManager only in
+        _on_replace_succeeded(), once the capture has actually completed;
+        a failed/disk-full replace never reaches the undo stack, since
+        nothing to undo would exist. Shared by the action bar's Replace
+        button and the right-click menu's Replace entry.
+        """
+        command = ReplaceFrameCommand(
+            self.project,
+            self.camera_controller.camera_manager,
+            self.event_bus,
+            frame_number,
+        )
+        self.capture_controller.replace_requested.emit(command)
+        logger.info("Replace requested for frame %d", frame_number)
+
+    def _on_replace_succeeded(self, command: ReplaceFrameCommand) -> None:
+        """React to a successful Replace, run on the capture worker thread.
+
+        Records the already-completed command via execute_already_done()
+        rather than execute(), since do() already ran on the worker thread
+        -- see UndoManager.execute_already_done()'s docstring for why
+        calling do() a second time here would be wrong.
+        """
+        logger.info("Replace succeeded: %s", command.description)
+        self.undo_manager.execute_already_done(command)
+        self._update_undo_redo_actions()
+        self._refresh_onion_skin()
+        self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
+
+    def _on_replace_failed(self, message: str) -> None:
+        """Show a "Replace Failed" dialog. Reuses Feature 4's Capture
+        Failed presentation, since replace_frame shares capture_frame's
+        exact trigger/write pipeline and can fail for the same reasons.
+        """
+        logger.error("Replace failed: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Replace Failed")
+        box.setText("Replace Failed")
+        box.setInformativeText(message)
+        box.exec()
+
+    def _on_toggle_marker(self) -> None:
+        """Toggle the marker on the currently-selected frame -- action bar
+        Marker button.
+        """
+        if self.project is None or self.timeline is None:
+            logger.warning("Toggle Marker requested with no active project; ignoring")
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            logger.warning("Toggle Marker requested with no frame selected; ignoring")
+            return
+        self._toggle_marker(frame.number)
+
+    def _toggle_marker(self, frame_number: int) -> None:
+        """Toggle `frame_number`'s marker, undoably.
+
+        Only refreshes the Timeline strip's marker border and the action
+        bar -- no onion skin refresh, since a marker is purely a Timeline
+        annotation with no effect on onion skin's overlay frames.
+        """
+        command = ToggleFrameMarkerCommand(self.project, self.event_bus, frame_number)
+        self.undo_manager.execute(command)
+        self._update_undo_redo_actions()
+        self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
+
+    def _on_notes_edited(self) -> None:
+        """Save the action bar's Notes field to the currently-selected frame.
+
+        Only executes a command if the text actually changed -- notes_edit
+        fires editingFinished on every focus-out, not just real edits, and
+        pushing a no-op SetFrameNotesCommand onto the undo stack for an
+        unchanged value would make Undo do nothing visible, which is
+        confusing regardless of being technically correct.
+        """
+        if self.project is None or self.timeline is None:
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            return
+        new_notes = self.frame_action_bar.notes_edit.text()
+        if new_notes == frame.notes:
+            return
+        command = SetFrameNotesCommand(
+            self.project, self.event_bus, frame.number, new_notes
+        )
+        self.undo_manager.execute(command)
+        self._update_undo_redo_actions()
 
     def _on_undo(self) -> None:
         """Undo the most recently executed command, per Feature 9.
@@ -621,11 +874,15 @@ class MainWindow(QMainWindow):
             self._update_undo_redo_actions()
             self._refresh_onion_skin()
             self._refresh_timeline_widget()
+            self._refresh_frame_action_bar()
 
     def _on_redo(self) -> None:
         """Redo the most recently undone command, per Feature 9.
 
-        Same rebuild-in-full reasoning as _on_undo().
+        Same rebuild-in-full reasoning as _on_undo(). Note that a redone
+        ReplaceFrameCommand does NOT re-trigger the camera (see its
+        do()'s docstring), so this can safely run synchronously here even
+        though the original Replace ran on the capture worker thread.
         """
         if self.timeline is None:
             logger.warning("Redo requested with no active project; ignoring")
@@ -635,6 +892,7 @@ class MainWindow(QMainWindow):
             self._update_undo_redo_actions()
             self._refresh_onion_skin()
             self._refresh_timeline_widget()
+            self._refresh_frame_action_bar()
 
     def _update_undo_redo_actions(self) -> None:
         """Enable/disable the Undo and Redo menu entries to match real state.
@@ -669,9 +927,9 @@ class MainWindow(QMainWindow):
         dialog, nothing changes. A fresh Timeline is created over the new
         project's frames at the same time -- Timeline holds a live
         reference to project.frames, so no further sync is needed as
-        captures happen. The Timeline strip is refreshed here too, so a
-        brand-new (empty) project correctly clears out whatever a
-        previously-open project may have left displayed.
+        captures happen. The Timeline strip and action bar are refreshed
+        here too, so a brand-new (empty) project correctly clears out
+        whatever a previously-open project may have left displayed.
         """
         dialog = NewProjectDialog(self)
         if dialog.exec():
@@ -683,6 +941,7 @@ class MainWindow(QMainWindow):
             logger.info("Project created: %s", self.project.name)
             self._refresh_onion_skin()
             self._refresh_timeline_widget()
+            self._refresh_frame_action_bar()
 
     def _on_open_project(self) -> None:
         """Open a folder picker and request a load on the worker thread.
@@ -728,13 +987,13 @@ class MainWindow(QMainWindow):
 
         A fresh Timeline is created over the opened project's frames at
         the same time -- see _on_new_project for why this needs no
-        further manual sync. The Timeline strip is refreshed here too, so
-        opening a project immediately shows its real frame thumbnails
-        rather than whatever was left over from a previous project.
-        undo_manager.clear() runs here for the same reason it runs in
-        _on_new_project: every held Command references the previous
-        Project object, so undoing one after switching projects would
-        silently act on the wrong project's files.
+        further manual sync. The Timeline strip and action bar are
+        refreshed here too, so opening a project immediately shows its
+        real frame thumbnails rather than whatever was left over from a
+        previous project. undo_manager.clear() runs here for the same
+        reason it runs in _on_new_project: every held Command references
+        the previous Project object, so undoing one after switching
+        projects would silently act on the wrong project's files.
         """
         self.project = project
         self.timeline = Timeline(project)
@@ -744,6 +1003,7 @@ class MainWindow(QMainWindow):
         logger.info("Project opened: %s", project.name)
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
 
     def _show_missing_frames_dialog(
         self, project: Project, missing_files: list
@@ -828,15 +1088,16 @@ class MainWindow(QMainWindow):
         reflect the frame just captured. This remains correct now that
         Play also exists: capture always means "the new frame is now
         current," regardless of where Play last left the playhead. The
-        Timeline strip is refreshed last so the newly-captured thumbnail
-        appears with its selection border in the same place the playhead
-        just moved to.
+        Timeline strip and action bar are refreshed last so the
+        newly-captured thumbnail appears with its selection border in the
+        same place the playhead just moved to.
         """
         logger.info("Capture succeeded: frame %d", frame_number)
         if self.timeline is not None:
             self.timeline.go_to_index(len(self.timeline) - 1)
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
+        self._refresh_frame_action_bar()
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.
@@ -866,6 +1127,8 @@ class MainWindow(QMainWindow):
         Acknowledge-only, no Retry -- per the Feature Spec, a disk-full
         capture is aborted rather than retryable; the project remains
         usable, but disk space needs to be freed before capturing again.
+        Shared by both Capture and Replace, per capture_controller.py's
+        single disk_full signal.
         """
         logger.error("Disk full: %s", message)
         box = QMessageBox(self)

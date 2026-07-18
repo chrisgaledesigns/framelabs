@@ -13,6 +13,8 @@ from framelabs.capture.capture_service import (
     delete_frame,
     duplicate_frame,
     replace_frame,
+    set_frame_notes,
+    toggle_frame_marker,
 )
 from framelabs.capture.frame_writer import CaptureWriteError, DiskFullError
 from framelabs.capture.metadata import MetadataWriteError
@@ -20,6 +22,7 @@ from framelabs.capture.metadata import write_metadata as real_write_metadata
 from framelabs.core.event_bus import EventBus
 from framelabs.project.creator import create_new_project
 from framelabs.project.project import Project
+from framelabs.project.serializer import ProjectSerializer
 
 
 def _real_png_bytes() -> bytes:
@@ -390,3 +393,86 @@ def test_duplicate_frame_missing_thumbnail_still_succeeds(tmp_path, monkeypatch)
     assert duplicate.number == 2
     assert not (project.project_path / "thumbnails" / "000002.jpg").exists()
     assert (project.project_path / "images" / "000002.png").exists()
+
+
+def test_set_frame_notes_updates_notes_and_persists(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+
+    notes_received = []
+    event_bus.subscribe(
+        "FRAME_NOTES_UPDATED", lambda payload: notes_received.append(payload)
+    )
+
+    updated = set_frame_notes(project, event_bus, frame.number, "First pose")
+
+    assert updated.notes == "First pose"
+    assert project.frames[0].notes == "First pose"
+    assert notes_received == [{"frame_number": 1}]
+
+    reloaded = ProjectSerializer.load(project.project_path)
+    assert reloaded.frames[0].notes == "First pose"
+
+
+def test_set_frame_notes_replaces_existing_notes(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+    set_frame_notes(project, event_bus, frame.number, "Old note")
+
+    updated = set_frame_notes(project, event_bus, frame.number, "New note")
+
+    assert updated.notes == "New note"
+
+
+def test_set_frame_notes_missing_number_raises_frame_not_found(tmp_path):
+    project = _make_project(tmp_path)
+    event_bus, _ = _make_event_bus()
+
+    with pytest.raises(FrameNotFoundError):
+        set_frame_notes(project, event_bus, 99, "orphan note")
+
+
+def test_toggle_frame_marker_flips_false_to_true_and_persists(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+    assert frame.marker is False
+
+    marker_received = []
+    event_bus.subscribe(
+        "FRAME_MARKER_UPDATED", lambda payload: marker_received.append(payload)
+    )
+
+    updated = toggle_frame_marker(project, event_bus, frame.number)
+
+    assert updated.marker is True
+    assert project.frames[0].marker is True
+    assert marker_received == [{"frame_number": 1}]
+
+    reloaded = ProjectSerializer.load(project.project_path)
+    assert reloaded.frames[0].marker is True
+
+
+def test_toggle_frame_marker_flips_true_back_to_false(tmp_path):
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+
+    toggle_frame_marker(project, event_bus, frame.number)
+    updated = toggle_frame_marker(project, event_bus, frame.number)
+
+    assert updated.marker is False
+
+
+def test_toggle_frame_marker_missing_number_raises_frame_not_found(tmp_path):
+    project = _make_project(tmp_path)
+    event_bus, _ = _make_event_bus()
+
+    with pytest.raises(FrameNotFoundError):
+        toggle_frame_marker(project, event_bus, 99)

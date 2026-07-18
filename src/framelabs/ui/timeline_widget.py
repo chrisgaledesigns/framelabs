@@ -10,22 +10,38 @@ playhead moves (arrow keys, playback ticks, thumbnail clicks) so that
 moving the playhead never rebuilds every thumbnail from disk, consistent
 with the Developer Handbook's "UI Never Blocks" principle.
 
+Also emits frame_context_menu_requested (right-click on a thumbnail), for
+Feature 5's context menu -- MainWindow owns the actual QMenu and the
+frame actions on it (Delete/Replace/Duplicate/Notes/Marker); this widget
+only reports where and on which frame the right-click happened, same
+"dumb widget, MainWindow owns behavior" split as frame_selected already
+follows for left-clicks.
+
 PlaybackControls is unchanged from the Phase 5 skeleton -- still real,
 wired widgets for Feature 7 (Play/Pause, Loop, speed), driven externally by
 MainWindow.
+
+FrameActionBar is the "selection action bar" referenced as not-yet-built
+in main_window.py's _create_actions() (Duplicate Frame's temporary
+Edit-menu home) and in capture/commands.py's module docstring
+(DeleteFrameCommand/ReplaceFrameCommand deferred until this UI exists).
+It exposes Delete/Replace/Duplicate/Marker/Notes controls for whichever
+frame is currently selected, following the exact same "dumb widget,
+MainWindow owns behavior" split as PlaybackControls above.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -61,6 +77,7 @@ class FrameThumbnail(QFrame):
     """
 
     clicked = Signal(int)
+    context_menu_requested = Signal(int, QPoint)
 
     def __init__(
         self,
@@ -127,6 +144,18 @@ class FrameThumbnail(QFrame):
         self.clicked.emit(self._index)
         super().mousePressEvent(event)
 
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 (Qt override name)
+        """Emit `context_menu_requested` with this thumbnail's index and
+        the event's global position, per Feature 5's right-click menu.
+
+        The global position is included (rather than just the index) so
+        the QMenu that MainWindow builds in response can be shown exactly
+        where the user right-clicked, the same way any native context
+        menu behaves.
+        """
+        self.context_menu_requested.emit(self._index, event.globalPos())
+        super().contextMenuEvent(event)
+
     def set_selected(self, selected: bool) -> None:
         """Toggle the selection border without rebuilding the thumbnail.
 
@@ -151,6 +180,7 @@ class TimelineWidget(QScrollArea):
     """
 
     frame_selected = Signal(int)
+    frame_context_menu_requested = Signal(int, QPoint)
 
     def __init__(self) -> None:
         """Build an empty timeline strip."""
@@ -200,6 +230,9 @@ class TimelineWidget(QScrollArea):
                 selected=(index == current_index),
             )
             thumbnail.clicked.connect(self.frame_selected.emit)
+            thumbnail.context_menu_requested.connect(
+                self.frame_context_menu_requested.emit
+            )
             self._strip_layout.addWidget(thumbnail)
 
     def set_current_index(self, current_index: int) -> None:
@@ -249,3 +282,84 @@ class PlaybackControls(QWidget):
         layout.addWidget(self.loop_button)
         layout.addWidget(self.speed_combo)
         layout.addStretch()
+
+
+class FrameActionBar(QWidget):
+    """Fixed action bar for Feature 5's remaining per-frame actions.
+
+    A single, non-scrolling row of controls -- Delete, Replace, Duplicate,
+    Marker, and Notes -- that always acts on whichever frame is currently
+    selected, regardless of how long the Timeline strip above it is. This
+    is the "selection action bar" referenced as not-yet-built in
+    main_window.py's _create_actions() (Duplicate Frame's temporary
+    Edit-menu home) and in capture/commands.py's module docstring
+    (DeleteFrameCommand/ReplaceFrameCommand deferred until it exists).
+
+    Holds no Project/Timeline/Frame of its own -- MainWindow calls
+    set_current_frame() whenever the selected frame changes (thumbnail
+    click, arrow keys, capture, undo/redo, delete) and reads/writes
+    self.delete_button, self.replace_button, self.duplicate_button,
+    self.marker_button, and self.notes_edit directly, owning all actual
+    command execution. Same "dumb widget, MainWindow owns behavior" split
+    PlaybackControls and TimelineWidget already follow.
+    """
+
+    def __init__(self) -> None:
+        """Build the bar, disabled until a frame is selected."""
+        super().__init__()
+        self.setFixedHeight(50)
+        self.setStyleSheet("border: 1px solid gray;")
+
+        layout = QHBoxLayout(self)
+
+        self.delete_button = QPushButton("Delete")
+        self.replace_button = QPushButton("Replace")
+        self.duplicate_button = QPushButton("Duplicate")
+
+        self.marker_button = QPushButton("Marker")
+        self.marker_button.setCheckable(True)
+
+        self.notes_edit = QLineEdit()
+        self.notes_edit.setPlaceholderText("Notes...")
+
+        layout.addWidget(self.delete_button)
+        layout.addWidget(self.replace_button)
+        layout.addWidget(self.duplicate_button)
+        layout.addWidget(self.marker_button)
+        layout.addWidget(self.notes_edit, 1)
+
+        # Grouped only so __init__ and set_current_frame() can enable/
+        # disable all four buttons in one loop -- notes_edit is handled
+        # separately since it isn't a QPushButton.
+        self._buttons = (
+            self.delete_button,
+            self.replace_button,
+            self.duplicate_button,
+            self.marker_button,
+        )
+        self.set_current_frame(None)
+
+    def set_current_frame(self, frame: Frame | None) -> None:
+        """Reflect `frame` as the bar's current frame.
+
+        Args:
+            frame: The newly selected frame, or None if no project is
+                open or the timeline is empty -- every control is
+                disabled and cleared in that case, since there is
+                nothing left for Delete/Replace/Duplicate/Marker/Notes
+                to act on.
+
+        Uses setText()/setChecked() rather than any signal-emitting call,
+        so refreshing the bar to match a new selection never itself
+        fires notes_edit.editingFinished or marker_button.clicked back
+        out to MainWindow -- only real user interaction with these
+        widgets does that, the same guarantee FrameThumbnail.set_selected
+        already gives set_current_index() one layer up.
+        """
+        has_frame = frame is not None
+        for button in self._buttons:
+            button.setEnabled(has_frame)
+        self.notes_edit.setEnabled(has_frame)
+
+        self.notes_edit.setText(frame.notes if frame is not None else "")
+        self.marker_button.setChecked(frame.marker if frame is not None else False)

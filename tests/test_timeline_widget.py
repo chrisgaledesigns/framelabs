@@ -12,13 +12,15 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QLabel
 
 from framelabs.project.project import Frame
 from framelabs.ui.timeline_widget import (
     MARKER_BORDER_COLOR,
     SELECTION_BORDER_COLOR,
+    FrameActionBar,
     FrameThumbnail,
     TimelineWidget,
 )
@@ -286,3 +288,134 @@ def test_set_current_index_preserves_marker_border(qtbot, tmp_path):
         t for t in widget._strip.findChildren(FrameThumbnail) if t._index == 0
     )
     assert MARKER_BORDER_COLOR in _all_style(marked)
+
+
+def test_thumbnail_context_menu_emits_index_and_position(qtbot, tmp_path):
+    _write_real_thumbnail(tmp_path, 1)
+    thumbnail = FrameThumbnail(
+        Frame(number=1, file="images/000001.png"),
+        tmp_path,
+        index=7,
+        selected=False,
+    )
+    qtbot.addWidget(thumbnail)
+
+    local_pos = QPoint(5, 5)
+    global_pos = QPoint(50, 60)
+    event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, local_pos, global_pos)
+
+    with qtbot.waitSignal(thumbnail.context_menu_requested, timeout=1000) as blocker:
+        thumbnail.contextMenuEvent(event)
+
+    assert blocker.args == [7, global_pos]
+
+
+def test_widget_frame_context_menu_requested_carries_thumbnail_index(qtbot, tmp_path):
+    widget = TimelineWidget()
+    qtbot.addWidget(widget)
+    frames = [
+        Frame(number=1, file="images/000001.png"),
+        Frame(number=2, file="images/000002.png"),
+    ]
+    for frame in frames:
+        _write_real_thumbnail(tmp_path, frame.number)
+    widget.refresh(frames, tmp_path, current_index=0)
+
+    thumbnails = widget._strip.findChildren(FrameThumbnail)
+    second_thumbnail = next(t for t in thumbnails if t._index == 1)
+    global_pos = QPoint(80, 90)
+    event = QContextMenuEvent(
+        QContextMenuEvent.Reason.Mouse, QPoint(10, 10), global_pos
+    )
+
+    with qtbot.waitSignal(widget.frame_context_menu_requested, timeout=1000) as blocker:
+        second_thumbnail.contextMenuEvent(event)
+
+    assert blocker.args == [1, global_pos]
+
+
+def test_action_bar_starts_disabled_and_empty(qtbot):
+    """No frame selected yet (fresh MainWindow, empty project) -- every
+    control must be disabled, not just inert, so nothing looks clickable
+    for an action that has no frame to act on."""
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+
+    assert not bar.delete_button.isEnabled()
+    assert not bar.replace_button.isEnabled()
+    assert not bar.duplicate_button.isEnabled()
+    assert not bar.marker_button.isEnabled()
+    assert not bar.notes_edit.isEnabled()
+    assert bar.notes_edit.text() == ""
+    assert not bar.marker_button.isChecked()
+
+
+def test_action_bar_set_current_frame_enables_and_populates(qtbot):
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+
+    bar.set_current_frame(
+        Frame(number=5, file="images/000005.png", notes="Arm raised", marker=True)
+    )
+
+    assert bar.delete_button.isEnabled()
+    assert bar.replace_button.isEnabled()
+    assert bar.duplicate_button.isEnabled()
+    assert bar.marker_button.isEnabled()
+    assert bar.notes_edit.isEnabled()
+    assert bar.notes_edit.text() == "Arm raised"
+    assert bar.marker_button.isChecked()
+
+
+def test_action_bar_set_current_frame_none_disables_and_clears(qtbot):
+    """Going from a selected frame back to none (e.g. the last frame in
+    the project gets deleted) must reset the bar, not just leave the
+    previous frame's notes/marker state stuck on screen."""
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+    bar.set_current_frame(
+        Frame(number=5, file="images/000005.png", notes="Arm raised", marker=True)
+    )
+
+    bar.set_current_frame(None)
+
+    assert not bar.delete_button.isEnabled()
+    assert not bar.replace_button.isEnabled()
+    assert not bar.duplicate_button.isEnabled()
+    assert not bar.marker_button.isEnabled()
+    assert not bar.notes_edit.isEnabled()
+    assert bar.notes_edit.text() == ""
+    assert not bar.marker_button.isChecked()
+
+
+def test_action_bar_unmarked_frame_leaves_marker_unchecked(qtbot):
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+
+    bar.set_current_frame(Frame(number=1, file="images/000001.png", marker=False))
+
+    assert not bar.marker_button.isChecked()
+
+
+def test_action_bar_set_current_frame_does_not_emit_notes_editing_finished(qtbot):
+    """set_current_frame() must use setText(), not anything that fires
+    editingFinished -- otherwise every playhead move would spuriously
+    look like the user just finished editing Notes."""
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+
+    with qtbot.assertNotEmitted(bar.notes_edit.editingFinished):
+        bar.set_current_frame(
+            Frame(number=1, file="images/000001.png", notes="Some note")
+        )
+
+
+def test_action_bar_set_current_frame_does_not_emit_marker_clicked(qtbot):
+    """set_current_frame() must use setChecked(), not anything that fires
+    clicked -- otherwise every playhead move onto a marked frame would
+    spuriously look like the user just clicked Marker."""
+    bar = FrameActionBar()
+    qtbot.addWidget(bar)
+
+    with qtbot.assertNotEmitted(bar.marker_button.clicked):
+        bar.set_current_frame(Frame(number=1, file="images/000001.png", marker=True))

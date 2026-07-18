@@ -9,6 +9,15 @@ writes a PNG, extracts metadata, generates a thumbnail, and autosaves the
 project, all of which are too slow to run on the UI thread without
 freezing it.
 
+Also drives ReplaceFrameCommand.do() on this same worker thread, for the
+identical reason -- Feature 5's Replace triggers a real camera capture
+through the exact same trigger/write/thumbnail/metadata pipeline
+capture_frame() uses (see capture_service.replace_frame), so it can't run
+synchronously on the main thread either. Unlike capture_frame(), the
+command's own do() is what's invoked here rather than a bare service
+function, so MainWindow can record it on UndoManager afterward via
+execute_already_done() -- see main_window.py's _on_replace_succeeded().
+
 Instances of this class are meant to be moved to their own dedicated
 QThread via moveToThread(), separate from the camera-scanning thread.
 CameraManager.capture() and .rescan_once() both guard against overlapping
@@ -24,6 +33,7 @@ action), so this controller's worker thread sits idle between requests.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
 
@@ -35,6 +45,9 @@ from framelabs.capture.capture_service import (
 )
 from framelabs.core.event_bus import EventBus
 from framelabs.project.project import Project
+
+if TYPE_CHECKING:
+    from framelabs.capture.commands import ReplaceFrameCommand
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +64,12 @@ class CaptureController(QObject):
     capture_failed = Signal(str)
     disk_full = Signal(str)
 
+    # Emitted with the resulting ReplaceFrameCommand on success, so
+    # MainWindow can record it on UndoManager (execute_already_done())
+    # without re-running do() a second time.
+    replace_succeeded = Signal(object)
+    replace_failed = Signal(str)
+
     # Emitted from the main thread with the current Project as its
     # payload; connected to _handle_capture_requested below, which --
     # because this object lives on the worker thread once moved -- Qt
@@ -60,6 +79,14 @@ class CaptureController(QObject):
     # whichever project was actually active at the moment Space was
     # pressed, with no risk of acting on a stale reference.
     capture_requested = Signal(object)
+
+    # Emitted from the main thread with an already-constructed
+    # ReplaceFrameCommand as its payload -- same queued-connection
+    # delivery as capture_requested above. Carrying the command itself
+    # (rather than just a frame number) means MainWindow builds it
+    # against whatever Project/CameraManager/EventBus are actually
+    # current at the moment Replace was requested.
+    replace_requested = Signal(object)
 
     def __init__(self, event_bus: EventBus, camera_manager: CameraManager) -> None:
         """Build the controller against an already-existing, already-
@@ -79,6 +106,7 @@ class CaptureController(QObject):
         self._camera_manager = camera_manager
 
         self.capture_requested.connect(self._handle_capture_requested)
+        self.replace_requested.connect(self._handle_replace_requested)
 
     def _handle_capture_requested(self, project: Project) -> None:
         """Run one capture. Always runs on the worker thread.
@@ -107,3 +135,30 @@ class CaptureController(QObject):
         else:
             logger.info("Capture succeeded: frame %d", frame.number)
             self.capture_succeeded.emit(frame.number)
+
+    def _handle_replace_requested(self, command: "ReplaceFrameCommand") -> None:
+        """Run one ReplaceFrameCommand.do(). Always runs on the worker thread.
+
+        Same exception handling shape as _handle_capture_requested() --
+        replace_frame() shares capture_frame()'s exact trigger/write
+        pipeline (see capture_service.py), so it can fail for the same
+        reasons. Emits the command itself back on success, not just a
+        frame number, so MainWindow can record it on UndoManager via
+        execute_already_done() -- see that method's own docstring for why
+        do() must not be called a second time on the main thread.
+        """
+        try:
+            logger.info("Replace started")
+            command.do()
+        except DiskFullServiceError as exc:
+            logger.error("Replace aborted, disk full: %s", exc)
+            self.disk_full.emit(str(exc))
+        except CaptureServiceError as exc:
+            logger.error("Replace failed: %s", exc)
+            self.replace_failed.emit(str(exc))
+        except ValueError as exc:
+            logger.error("Replace failed, no active project: %s", exc)
+            self.replace_failed.emit(str(exc))
+        else:
+            logger.info("Replace succeeded: %s", command.description)
+            self.replace_succeeded.emit(command)
