@@ -23,6 +23,7 @@ from framelabs.capture.commands import (
     SetFrameNotesCommand,
     ToggleFrameMarkerCommand,
 )
+from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
 from framelabs.project.project import Project
@@ -60,6 +61,11 @@ class MainWindow(QMainWindow):
         self.onion_settings = OnionSkinSettings()
         self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
+        # Feature 12. Constructed the same self-contained way as EventBus/
+        # UndoManager above -- no other module needs shared access to
+        # Config yet, so there's no reason to move construction up into
+        # app/main.py until something else actually needs it.
+        self.config = Config()
         # Feature 9. Duplicate/Delete/Marker/Notes commands run
         # synchronously on the main thread (see _duplicate_frame's
         # docstring) -- known, flagged simplification, not an oversight.
@@ -94,25 +100,23 @@ class MainWindow(QMainWindow):
         self.open_action.triggered.connect(self._on_open_project)
 
         self.save_action = QAction("Save Project", self)
-        self.save_action.setShortcut(QKeySequence.StandardKey.Save)
+        self.save_action.setShortcuts(self._shortcuts("save"))
         self.save_action.triggered.connect(self._on_save_project)
 
         self.capture_action = QAction("Capture", self)
-        self.capture_action.setShortcut(QKeySequence(Qt.Key.Key_Space))
+        self.capture_action.setShortcuts(self._shortcuts("capture"))
         self.capture_action.triggered.connect(self._on_capture)
 
-        # Feature 9. Shortcuts match the defaults already recorded in
-        # core/config.py's DEFAULT_SETTINGS["keyboard_shortcuts"] -- not yet
-        # wired to Config (Feature 12 is still open, see hand-off), so these
-        # are still the same hardcoded QKeySequence pattern every other
-        # action here uses.
+        # Feature 12. Every shortcut below is read from Config's
+        # "keyboard_shortcuts" setting via self._shortcuts() rather than
+        # hardcoded -- see that method's docstring further down.
         self.undo_action = QAction("Undo", self)
-        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.setShortcuts(self._shortcuts("undo"))
         self.undo_action.setEnabled(False)
         self.undo_action.triggered.connect(self._on_undo)
 
         self.redo_action = QAction("Redo", self)
-        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.setShortcuts(self._shortcuts("redo"))
         self.redo_action.setEnabled(False)
         self.redo_action.triggered.connect(self._on_redo)
 
@@ -122,18 +126,16 @@ class MainWindow(QMainWindow):
         # bar's Duplicate button, but removing a working shortcut/menu
         # entry is a UI call for Chris, not something to drop silently.
         self.duplicate_frame_action = QAction("Duplicate Frame", self)
-        self.duplicate_frame_action.setShortcut(QKeySequence("Ctrl+D"))
+        self.duplicate_frame_action.setShortcuts(self._shortcuts("duplicate_frame"))
         self.duplicate_frame_action.triggered.connect(self._on_duplicate_frame)
 
         self.play_action = QAction("Play", self)
-        self.play_action.setShortcuts(
-            [QKeySequence(Qt.Key.Key_Return), QKeySequence(Qt.Key.Key_Enter)]
-        )
+        self.play_action.setShortcuts(self._shortcuts("play_pause"))
         self.play_action.triggered.connect(self._on_toggle_play)
 
         self.onion_action = QAction("Onion", self)
         self.onion_action.setCheckable(True)
-        self.onion_action.setShortcut(QKeySequence(Qt.Key.Key_O))
+        self.onion_action.setShortcuts(self._shortcuts("toggle_onion_skin"))
         self.onion_action.triggered.connect(self._on_toggle_onion_skin)
 
         self.safe_areas_action = QAction("Safe Areas", self)
@@ -147,17 +149,17 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
 
         self.blender_action = QAction("Open in Blender", self)
-        self.blender_action.setShortcut(QKeySequence(Qt.Key.Key_B))
+        self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
         self.blender_action.triggered.connect(
             lambda: logger.info("Open in Blender clicked")
         )
 
         self.previous_frame_action = QAction("Previous Frame", self)
-        self.previous_frame_action.setShortcut(QKeySequence(Qt.Key.Key_Left))
+        self.previous_frame_action.setShortcuts(self._shortcuts("previous_frame"))
         self.previous_frame_action.triggered.connect(self._on_previous_frame)
 
         self.next_frame_action = QAction("Next Frame", self)
-        self.next_frame_action.setShortcut(QKeySequence(Qt.Key.Key_Right))
+        self.next_frame_action.setShortcuts(self._shortcuts("next_frame"))
         self.next_frame_action.triggered.connect(self._on_next_frame)
 
         # Per Feature 12, Left/Right have no menu home -- unlike every other
@@ -168,6 +170,22 @@ class MainWindow(QMainWindow):
         # the shortcut live with no visible menu entry.
         self.addAction(self.previous_frame_action)
         self.addAction(self.next_frame_action)
+
+    def _shortcuts(self, action_name: str) -> list[QKeySequence]:
+        """Look up the configured QKeySequence(s) for a named action.
+
+        Reads the raw string(s) for `action_name` out of Config's
+        "keyboard_shortcuts" setting via the Qt-free parse_shortcut()
+        helper (core/config.py), then wraps each resulting key string in a
+        real QKeySequence -- this method is the one place in the app that
+        touches Qt for shortcut parsing, so parse_shortcut() itself stays
+        unit-testable with no GUI setup at all. Returns an empty list (no
+        shortcut assigned) if action_name isn't present in Config, rather
+        than raising -- a missing/misconfigured entry should degrade to
+        "no shortcut" for that one action, not crash startup.
+        """
+        raw = self.config.get("keyboard_shortcuts", {}).get(action_name, "")
+        return [QKeySequence(key) for key in parse_shortcut(raw)]
 
     def _build_menu_bar(self) -> None:
         """Construct the top menu bar, using the shared actions."""
