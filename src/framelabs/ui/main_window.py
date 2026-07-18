@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from framelabs.capture.commands import DuplicateFrameCommand
 from framelabs.core.event_bus import EventBus
+from framelabs.core.undo_manager import UndoManager
 from framelabs.project.project import Project
 from framelabs.timeline.onion_skin import OnionSkinSettings
 from framelabs.timeline.playback import PlaybackSettings
@@ -47,6 +49,10 @@ class MainWindow(QMainWindow):
         self.onion_settings = OnionSkinSettings()
         self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
+        # Feature 9. Commands run synchronously on the main thread for now
+        # (see _on_duplicate_frame's docstring) -- known, flagged
+        # simplification, not an oversight.
+        self.undo_manager = UndoManager()
         # Set True as the very first thing closeEvent() does. Guards
         # _refresh_onion_skin() against firing once worker-thread teardown
         # has started -- see closeEvent()'s docstring for the full
@@ -79,6 +85,31 @@ class MainWindow(QMainWindow):
         self.capture_action = QAction("Capture", self)
         self.capture_action.setShortcut(QKeySequence(Qt.Key.Key_Space))
         self.capture_action.triggered.connect(self._on_capture)
+
+        # Feature 9. Shortcuts match the defaults already recorded in
+        # core/config.py's DEFAULT_SETTINGS["keyboard_shortcuts"] -- not yet
+        # wired to Config (Feature 12 is still open, see hand-off), so these
+        # are still the same hardcoded QKeySequence pattern every other
+        # action here uses.
+        self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.setEnabled(False)
+        self.undo_action.triggered.connect(self._on_undo)
+
+        self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.setEnabled(False)
+        self.redo_action.triggered.connect(self._on_redo)
+
+        # Feature 5. Temporary Edit-menu home for Duplicate Frame, per
+        # Chris's call -- the real UI (right-click menu / selection action
+        # bar) doesn't exist yet. Ctrl+D isn't in the Feature Spec's
+        # defaults list; chosen here as the conventional "duplicate"
+        # shortcut on both Windows and macOS. Revisit once Feature 12's
+        # shortcuts are genuinely configurable.
+        self.duplicate_frame_action = QAction("Duplicate Frame", self)
+        self.duplicate_frame_action.setShortcut(QKeySequence("Ctrl+D"))
+        self.duplicate_frame_action.triggered.connect(self._on_duplicate_frame)
 
         self.play_action = QAction("Play", self)
         self.play_action.setShortcuts(
@@ -133,7 +164,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.open_action)
         file_menu.addAction(self.save_action)
 
-        menu_bar.addMenu("&Edit")
+        edit_menu = menu_bar.addMenu("&Edit")
+        edit_menu.addAction(self.undo_action)
+        edit_menu.addAction(self.redo_action)
+        edit_menu.addSeparator()
+        # Temporary home for Duplicate Frame -- see _create_actions().
+        edit_menu.addAction(self.duplicate_frame_action)
 
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)
@@ -533,6 +569,82 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._move_timeline_playhead()
 
+    def _on_duplicate_frame(self) -> None:
+        """Duplicate the currently-selected frame, per Feature 5/9.
+
+        No-op with a log line if there's no active project or no frame
+        selected -- same guard pattern as _on_capture(). Runs
+        DuplicateFrameCommand.do() synchronously on the main thread rather
+        than on a worker thread the way capture/save/load do -- a known,
+        deliberately flagged simplification (see hand-off), not an
+        oversight; duplicate_frame() is a same-project file copy, cheap
+        enough in practice that this hasn't been worth the extra
+        worker-thread plumbing yet, but should move to one if real-world
+        frame sizes make it noticeable.
+
+        Moves the playhead to the new duplicate, matching how
+        _on_capture_succeeded() always selects the newest frame after a
+        capture -- a duplicate is a new frame the user just asked for, so
+        it should be the one now on screen, the same way a fresh capture
+        is.
+        """
+        if self.project is None or self.timeline is None:
+            logger.warning("Duplicate Frame requested with no active project; ignoring")
+            return
+        frame = self.timeline.current_frame
+        if frame is None:
+            logger.warning("Duplicate Frame requested with no frame selected; ignoring")
+            return
+        command = DuplicateFrameCommand(self.project, self.event_bus, frame.number)
+        self.undo_manager.execute(command)
+        self._update_undo_redo_actions()
+        self.timeline.go_to_index(len(self.timeline) - 1)
+        self._refresh_onion_skin()
+        self._refresh_timeline_widget()
+
+    def _on_undo(self) -> None:
+        """Undo the most recently executed command, per Feature 9.
+
+        The undone command may have changed which frames exist (e.g.
+        undoing a duplicate removes the frame it created), so this
+        rebuilds the Timeline strip in full via _refresh_timeline_widget()
+        rather than the cheaper _move_timeline_playhead() -- same
+        reasoning as _on_capture_succeeded(). go_to_index() re-clamps the
+        playhead first in case the frame list just got shorter than the
+        current index.
+        """
+        if self.timeline is None:
+            logger.warning("Undo requested with no active project; ignoring")
+            return
+        if self.undo_manager.undo():
+            self.timeline.go_to_index(self.timeline.current_index)
+            self._update_undo_redo_actions()
+            self._refresh_onion_skin()
+            self._refresh_timeline_widget()
+
+    def _on_redo(self) -> None:
+        """Redo the most recently undone command, per Feature 9.
+
+        Same rebuild-in-full reasoning as _on_undo().
+        """
+        if self.timeline is None:
+            logger.warning("Redo requested with no active project; ignoring")
+            return
+        if self.undo_manager.redo():
+            self.timeline.go_to_index(self.timeline.current_index)
+            self._update_undo_redo_actions()
+            self._refresh_onion_skin()
+            self._refresh_timeline_widget()
+
+    def _update_undo_redo_actions(self) -> None:
+        """Enable/disable the Undo and Redo menu entries to match real state.
+
+        Called after every execute/undo/redo so the Edit menu never offers
+        an Undo/Redo that would actually be a no-op.
+        """
+        self.undo_action.setEnabled(self.undo_manager.can_undo())
+        self.redo_action.setEnabled(self.undo_manager.can_redo())
+
     def _on_loop_toggled(self, checked: bool) -> None:
         """Update Loop live.
 
@@ -565,6 +677,8 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self.project = dialog.project
             self.timeline = Timeline(self.project)
+            self.undo_manager.clear()
+            self._update_undo_redo_actions()
             self.setWindowTitle(f"FrameLabs — {self.project.name}")
             logger.info("Project created: %s", self.project.name)
             self._refresh_onion_skin()
@@ -617,9 +731,15 @@ class MainWindow(QMainWindow):
         further manual sync. The Timeline strip is refreshed here too, so
         opening a project immediately shows its real frame thumbnails
         rather than whatever was left over from a previous project.
+        undo_manager.clear() runs here for the same reason it runs in
+        _on_new_project: every held Command references the previous
+        Project object, so undoing one after switching projects would
+        silently act on the wrong project's files.
         """
         self.project = project
         self.timeline = Timeline(project)
+        self.undo_manager.clear()
+        self._update_undo_redo_actions()
         self.setWindowTitle(f"FrameLabs — {project.name}")
         logger.info("Project opened: %s", project.name)
         self._refresh_onion_skin()
