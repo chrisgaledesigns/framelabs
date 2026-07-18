@@ -14,6 +14,11 @@ ties them together with CameraManager and ProjectSerializer.
 Also implements Feature 5's delete/replace/duplicate frame actions
 (delete_frame, replace_frame, duplicate_frame), since they share the same
 capture/write pipeline and file-layout knowledge as capture_frame itself.
+set_frame_notes and toggle_frame_marker round out Feature 5's remaining
+per-frame edits (Notes and Marker) -- unlike the actions above, neither
+touches any files on disk, only project.frames + a save, but they're kept
+here rather than in project/ so all "things you can do to a Frame"
+sensibly live in one module.
 """
 
 import logging
@@ -247,6 +252,83 @@ def delete_frame(project: Project, event_bus: EventBus, frame_number: int) -> No
 
     event_bus.publish("FRAME_DELETED", {"frame_number": frame_number})
     logger.info("Deleted frame %d", frame_number)
+
+
+def set_frame_notes(
+    project: Project, event_bus: EventBus, frame_number: int, notes: str
+) -> Frame:
+    """Set a frame's free-text notes, persisting immediately.
+
+    Per Feature 9's Undo/Redo list, editing Notes is explicitly one of the
+    undoable actions. This function's signature -- (project, event_bus,
+    frame_number, ...) -> Frame -- deliberately mirrors duplicate_frame's,
+    so a future SetFrameNotesCommand can wrap it the same way
+    DuplicateFrameCommand wraps duplicate_frame; that Command isn't built
+    yet (see hand-off), only the service function.
+
+    Args:
+        project: The active project. Must have a non-None project_path.
+        event_bus: The event bus FRAME_NOTES_UPDATED will be published on.
+        frame_number: The frame whose notes are being set.
+        notes: The new notes text. Replaces any existing notes entirely.
+
+    Returns:
+        The same Frame instance already in project.frames, with notes updated.
+
+    Raises:
+        ValueError: If project.project_path is None.
+        FrameNotFoundError: If no frame with frame_number exists.
+    """
+    if project.project_path is None:
+        raise ValueError("project.project_path is None; cannot set frame notes")
+
+    frame = _find_frame(project, frame_number)
+    frame.notes = notes
+
+    ProjectSerializer.save(project)
+
+    event_bus.publish("FRAME_NOTES_UPDATED", {"frame_number": frame_number})
+    logger.info("Updated notes for frame %d", frame_number)
+
+    return frame
+
+
+def toggle_frame_marker(
+    project: Project, event_bus: EventBus, frame_number: int
+) -> Frame:
+    """Flip a frame's marker on or off, persisting immediately.
+
+    Per Feature 9's Undo/Redo list, this counts as a "Timeline edit" and
+    is meant to be undoable. Toggling is its own exact inverse, which
+    will make a future ToggleFrameMarkerCommand.undo() trivial -- it can
+    just call this again rather than needing to remember/restore prior
+    state, unlike e.g. DuplicateFrameCommand's undo. That Command isn't
+    built yet (see hand-off), only the service function.
+
+    Args:
+        project: The active project. Must have a non-None project_path.
+        event_bus: The event bus FRAME_MARKER_UPDATED will be published on.
+        frame_number: The frame whose marker is being toggled.
+
+    Returns:
+        The same Frame instance already in project.frames, with marker flipped.
+
+    Raises:
+        ValueError: If project.project_path is None.
+        FrameNotFoundError: If no frame with frame_number exists.
+    """
+    if project.project_path is None:
+        raise ValueError("project.project_path is None; cannot toggle frame marker")
+
+    frame = _find_frame(project, frame_number)
+    frame.marker = not frame.marker
+
+    ProjectSerializer.save(project)
+
+    event_bus.publish("FRAME_MARKER_UPDATED", {"frame_number": frame_number})
+    logger.info("Set marker=%s for frame %d", frame.marker, frame_number)
+
+    return frame
 
 
 def _write_captured_image(

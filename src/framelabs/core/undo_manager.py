@@ -42,6 +42,22 @@ class UndoManager:
         self._redo_stack.clear()
         logger.info("Command executed: %s", command.description)
 
+    def execute_already_done(self, command: Command) -> None:
+        """Record a command whose do() has already run elsewhere, without
+        calling do() again.
+
+        Used when a command's do() must run off the main thread -- e.g.
+        ReplaceFrameCommand's do() triggers a real camera capture, which
+        per the Developer Handbook's "UI Never Blocks" rule runs on
+        CaptureController's worker thread (see capture_controller.py's
+        replace_requested flow). do() has already happened by the time
+        this is called; only the undo-stack bookkeeping happens here,
+        back on the main thread where UndoManager itself lives.
+        """
+        self._push_undo(command)
+        self._redo_stack.clear()
+        logger.info("Command recorded as already executed: %s", command.description)
+
     def undo(self) -> bool:
         """Undo the most recently executed command, if any.
 
