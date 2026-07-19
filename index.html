@@ -475,15 +475,15 @@
         <a class="btn btn-outline" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">View Source</a>
       </div>
       <div class="hero-meta">
-        <span><span class="rec-dot"></span> Session 12 in progress</span>
-        <span>HEAD <b class="mono">4f7f527</b></span>
+        <span><span class="rec-dot"></span> Session 14 in progress</span>
+        <span>HEAD <b class="mono">1117d32</b></span>
         <span>Windows · macOS · Linux</span>
       </div>
     </div>
 
     <div class="stat-rail">
       <div class="stat"><div class="num">14</div><div class="lbl">Features in the spec, tracked one by one</div></div>
-      <div class="stat">251<span class="mono"></span><div class="lbl" style="margin-top:8px;">Automated tests passing right now</div></div>
+      <div class="stat">274<span class="mono"></span><div class="lbl" style="margin-top:8px;">Automated tests passing right now</div></div>
       <div class="stat"><div class="num">3</div><div class="lbl">Platforms: Windows, macOS, Linux</div></div>
       <div class="stat"><div class="num">MIT</div><div class="lbl">Free and open source, forever</div></div>
     </div>
@@ -572,13 +572,13 @@
       <div class="roadmap-teaser">
         <svg class="rt-ring" width="90" height="90" viewBox="0 0 150 150">
           <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="66.2" transform="rotate(-90 75 75)"/>
-          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">83%</text>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">85%</text>
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">BUILD</text>
         </svg>
         <div class="rt-body">
-          <h3>Phase 5 (UI Shell) is closed — Phase 7, the Blender Bridge, is next</h3>
-          <p>251 tests passing, 7 of 10 roadmap phases fully closed. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
+          <h3>Phases 0–6 are closed — Phase 7, the Blender Bridge, is next</h3>
+          <p>274 tests passing, 7 of 10 roadmap phases fully closed. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
           <div class="rt-track">
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div>
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node">7</div><div class="rt-node">8</div><div class="rt-node">9</div>
@@ -752,7 +752,7 @@ framelabs
 
         <div class="feature-card">
           <div class="fc-top"><span class="fc-num mono">05</span><h3>Timeline</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
-          <p class="fc-summary">Real thumbnails, click-to-select, and marker/selection borders, plus Delete, Replace, Duplicate, Marker, and Notes — all wired into a right-click menu and a selection action bar, all undoable. Reordering is planned for a future release.</p>
+          <p class="fc-summary">Real thumbnails, click-to-select, click-and-drag scrolling, and marker/selection borders, plus Delete, Replace, Duplicate, Marker, and Notes — all wired into a right-click menu, a selection action bar, and keyboard shortcuts, all undoable. Reordering is planned for a future release.</p>
           <div class="feature-detail">
             <span class="detail-label">Replace frame workflow</span>
             <div class="flow-box">Select Frame<span class="arrow">→</span>Replace<span class="arrow">→</span>Capture New Image<span class="arrow">→</span>Overwrite Existing<span class="arrow">→</span>Refresh Thumbnail</div>
@@ -764,9 +764,10 @@ framelabs
             <span class="detail-label">Currently</span>
             <ul class="edge-list">
               <li>The real TimelineWidget is built: thumbnails, click-to-select driving the playhead, and independent marker/selection borders that can stack on one frame</li>
-              <li>Delete, Replace, Duplicate, Marker toggle, and Notes are all wired in — through both a right-click context menu and a selection-triggered action bar docked below the Timeline strip, sharing one set of handler methods behind both surfaces, each action backed by a real, undoable Command</li>
+              <li>Click-and-drag scrolling on the timeline strip, distinguishing a real drag from a small-movement select-click so selecting a frame still works</li>
+              <li>Delete, Replace, Duplicate, Marker toggle, and Notes are all wired in — through a right-click context menu, a selection-triggered action bar docked below the Timeline strip, and keyboard shortcuts, sharing one set of handler methods behind every surface, each action backed by a real, undoable Command</li>
               <li>Delete, Replace, and Duplicate back up the real image/thumbnail/metadata files they touch before acting, so undo restores the exact original files, not just an in-memory record</li>
-              <li>Drag-to-reorder is spec'd but intentionally deferred to a future release</li>
+              <li>Drag-to-reorder frames is spec'd but intentionally deferred to a future release</li>
             </ul>
           </div>
         </div>
@@ -875,8 +876,8 @@ framelabs
         </div>
 
         <div class="feature-card">
-          <div class="fc-top"><span class="fc-num mono">12</span><h3>Keyboard Shortcuts</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
-          <p class="fc-summary">Every shortcut is reassignable. Defaults include Space to capture, Ctrl+S to save, B to open Blender, and O to toggle onion skin.</p>
+          <div class="fc-top"><span class="fc-num mono">12</span><h3>Keyboard Shortcuts</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Every shortcut is reassignable via config.json. Defaults include Space to capture, Ctrl+S to save, B to open Blender, O to toggle onion skin, and Delete to delete a frame.</p>
           <div class="feature-detail">
             <span class="detail-label">Defaults</span>
             <div class="kbd-grid">
@@ -884,6 +885,8 @@ framelabs
               <div class="kbd-row"><span class="kbd">Ctrl+S</span> Save</div>
               <div class="kbd-row"><span class="kbd">Ctrl+Z</span> Undo</div>
               <div class="kbd-row"><span class="kbd">Ctrl+Shift+Z</span> Redo</div>
+              <div class="kbd-row"><span class="kbd">Ctrl+D</span> Duplicate frame</div>
+              <div class="kbd-row"><span class="kbd">Delete</span> Delete frame</div>
               <div class="kbd-row"><span class="kbd">B</span> Open Blender</div>
               <div class="kbd-row"><span class="kbd">O</span> Toggle onion skin</div>
               <div class="kbd-row"><span class="kbd">← / →</span> Previous / next frame</div>
@@ -895,8 +898,8 @@ framelabs
             </ul>
             <span class="detail-label">Currently</span>
             <ul class="edge-list">
-              <li>Every default above is a real, working <span class="mono">QKeySequence</span> in the app — but each one is still hardcoded rather than read from <span class="mono">Config</span>, so shortcuts aren't actually user-reassignable yet despite the config scaffolding existing</li>
-              <li>Top of the queue for next session's work</li>
+              <li>Every default above reads from <span class="mono">Config</span>'s <span class="mono">keyboard_shortcuts</span> setting through a Qt-free <span class="mono">parse_shortcut()</span> helper — genuinely reassignable by editing <span class="mono">~/.framelabs/config.json</span>, not just hardcoded <span class="mono">QKeySequence</span> defaults</li>
+              <li>No in-app settings UI to change a shortcut yet — deliberately deferred, since the Feature Spec only requires configurability, not a specific UI for it</li>
             </ul>
           </div>
         </div>
@@ -1104,9 +1107,9 @@ framelabs
         <div class="ru-subtitle">Open-source stop-motion animation app with one-click Blender integration — built by <b>Chris (chrisgaledesigns)</b> with Claude as engineering partner.</div>
       </div>
       <div class="ru-meta">
-        SESSION <span>12</span> · PUSH <span>1</span><br>
-        HEAD <span>4f7f527</span><br>
-        <span>Last updated July 18, 2026</span>
+        SESSION <span>14</span> · PUSH <span>1</span><br>
+        HEAD <span>1117d32</span><br>
+        <span>Last updated July 19, 2026</span>
       </div>
     </div>
 
@@ -1114,17 +1117,17 @@ framelabs
       <div class="ru-ring-wrap">
         <svg width="150" height="150" viewBox="0 0 150 150">
           <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="66.2" transform="rotate(-90 75 75)"/>
-          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">83%</text>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">85%</text>
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">OVERALL BUILD</text>
         </svg>
         <div class="ru-ring-label">Roadmap Phases 0–9</div>
       </div>
       <div class="ru-stat-rail">
         <div class="ru-stat"><div class="num">7<span style="color:var(--muted); font-size:16px;">/10</span></div><div class="lbl">Roadmap phases fully closed</div></div>
-        <div class="ru-stat"><div class="num">251</div><div class="lbl">Automated tests, all passing</div></div>
-        <div class="ru-stat"><div class="num">5</div><div class="lbl">Commits pushed this session</div></div>
-        <div class="ru-stat"><div class="num">6<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
+        <div class="ru-stat"><div class="num">274</div><div class="lbl">Automated tests, all passing</div></div>
+        <div class="ru-stat"><div class="num">1</div><div class="lbl">Commits pushed this session</div></div>
+        <div class="ru-stat"><div class="num">7<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
       </div>
     </div>
 
@@ -1166,7 +1169,7 @@ framelabs
       <div class="ru-phase-card"><div class="top"><span class="name">2 · Core Infrastructure</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Logger, event bus, config — logger wired app-wide.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">3 · Camera Layer</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Interface + webcam backend + manager, now including live-view start/stop/read-frame support. Closed for alpha scope; DSLR backend deferred.</div><div class="ru-tag done">CLOSED (ALPHA)</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">4 · Capture Pipeline</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Frame writer, metadata, capture service + Project/serializer/creator.</div><div class="ru-tag done">CLOSED</div></div>
-      <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, the real Timeline widget, and now Delete/Replace/Duplicate/Marker/Notes — wired into both a right-click menu and a selection action bar, every action undoable — are all CLOSED and real. Export/Open in Blender remains, intentionally deferred to Phase 7's Blender bridge work, not left over from this phase. Keyboard shortcut configurability (Feature 12) remains open as a smaller trailing item.</div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, the real Timeline widget, and Delete/Replace/Duplicate/Marker/Notes — wired into a right-click menu, a selection action bar, and keyboard shortcuts, every action undoable — are all CLOSED and real. Keyboard shortcut configurability (Feature 12) is also now genuinely done, reading from Config rather than hardcoded. Export/Open in Blender remains, intentionally deferred to Phase 7's Blender bridge work, not left over from this phase.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">6 · Timeline, Playback, Onion Skin</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Timeline data model, Onion Skin engine, and Playback controller all built, tested, and manually verified. <b style="color:var(--teal)">The shutdown crash that previously blocked Playback</b> (<span class="mono">RuntimeError: Signal source has been deleted</span>, when Onion Skin refreshed during Play) was root-caused and fixed — a `QThread.wait()` event-queue timing issue, not a logic bug. Safe areas and the histogram overlay (Feature 3) are now built and manually verified too, closing this phase out. This session: a real bug fix, not new scope — reaching the end of a non-looping sequence now resets the playhead to frame 1 instead of leaving it parked on the last frame.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">7 · Blender Bridge</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">The flagship feature — not yet begun.</div><div class="ru-tag not">NOT STARTED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">8 · Packaging to .exe</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">PyInstaller packaging for distribution.</div><div class="ru-tag not">NOT STARTED</div></div>
@@ -1189,7 +1192,7 @@ framelabs
       <div class="ru-feat"><span class="fnum">09</span><span class="fname">Undo / Redo</span><span class="fstate mid">PARTIAL</span></div>
       <div class="ru-feat"><span class="fnum">10</span><span class="fname">Blender Export</span><span class="fstate not">NOT STARTED</span></div>
       <div class="ru-feat"><span class="fnum">11</span><span class="fname">Live Blender Sync (v2)</span><span class="fstate not">NOT STARTED</span></div>
-      <div class="ru-feat"><span class="fnum">12</span><span class="fname">Keyboard Shortcuts</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">12</span><span class="fname">Keyboard Shortcuts</span><span class="fstate done">DONE</span></div>
       <div class="ru-feat"><span class="fnum">13</span><span class="fname">Plugin Manager</span><span class="fstate mid">PARTIAL</span></div>
       <div class="ru-feat"><span class="fnum">14</span><span class="fname">Logging</span><span class="fstate done">DONE</span></div>
     </div>
@@ -1198,30 +1201,31 @@ framelabs
       <div>
         <div class="ru-section-head" style="margin-top:0;">
           <span class="ru-section-num">04</span><span class="ru-section-title">Test Suite Composition</span>
-          <span class="ru-section-sub">251 passing</span>
+          <span class="ru-section-sub">274 passing</span>
         </div>
         <div class="ru-testchart">
-          <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">27</span></div>
-          <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:93%"></div></div><span class="tval">25</span></div>
-          <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:89%"></div></div><span class="tval">24</span></div>
-          <div class="ru-trow"><span class="tname">test_timeline_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:85%"></div></div><span class="tval">23</span></div>
-          <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:56%"></div></div><span class="tval">15</span></div>
-          <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:52%"></div></div><span class="tval">14</span></div>
-          <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:44%"></div></div><span class="tval">12</span></div>
-          <div class="ru-trow"><span class="tname">test_undo_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_playback_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_frame_writer.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_plugin_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:33%"></div></div><span class="tval">9</span></div>
-          <div class="ru-trow"><span class="tname">test_playback.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_metadata.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_histogram.py</span><div class="tbar-wrap"><div class="tbar" style="width:30%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_onion_skin.py</span><div class="tbar-wrap"><div class="tbar" style="width:22%"></div></div><span class="tval">6</span></div>
-          <div class="ru-trow"><span class="tname">test_commands.py</span><div class="tbar-wrap"><div class="tbar" style="width:22%"></div></div><span class="tval">6</span></div>
-          <div class="ru-trow"><span class="tname">test_onion_skin_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:19%"></div></div><span class="tval">5</span></div>
-          <div class="ru-trow"><span class="tname">test_project.py</span><div class="tbar-wrap"><div class="tbar" style="width:15%"></div></div><span class="tval">4</span></div>
-          <div class="ru-trow"><span class="tname">test_config.py</span><div class="tbar-wrap"><div class="tbar" style="width:15%"></div></div><span class="tval">4</span></div>
+          <div class="ru-trow"><span class="tname">test_timeline_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">28</span></div>
+          <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:96%"></div></div><span class="tval">27</span></div>
+          <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:89%"></div></div><span class="tval">25</span></div>
+          <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:86%"></div></div><span class="tval">24</span></div>
+          <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:54%"></div></div><span class="tval">15</span></div>
+          <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:50%"></div></div><span class="tval">14</span></div>
+          <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
+          <div class="ru-trow"><span class="tname">test_project_browser_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
+          <div class="ru-trow"><span class="tname">test_undo_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_playback_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_frame_writer.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_config.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
+          <div class="ru-trow"><span class="tname">test_plugin_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:32%"></div></div><span class="tval">9</span></div>
+          <div class="ru-trow"><span class="tname">test_playback.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_metadata.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_histogram.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
+          <div class="ru-trow"><span class="tname">test_onion_skin.py</span><div class="tbar-wrap"><div class="tbar" style="width:21%"></div></div><span class="tval">6</span></div>
+          <div class="ru-trow"><span class="tname">test_commands.py</span><div class="tbar-wrap"><div class="tbar" style="width:21%"></div></div><span class="tval">6</span></div>
+          <div class="ru-trow"><span class="tname">test_onion_skin_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:18%"></div></div><span class="tval">5</span></div>
+          <div class="ru-trow"><span class="tname">test_project.py</span><div class="tbar-wrap"><div class="tbar" style="width:14%"></div></div><span class="tval">4</span></div>
           <div class="ru-trow"><span class="tname">test_event_bus.py</span><div class="tbar-wrap"><div class="tbar" style="width:11%"></div></div><span class="tval">3</span></div>
         </div>
       </div>
@@ -1233,21 +1237,21 @@ framelabs
         </div>
         <div class="ru-testchart" style="padding:18px 20px;">
           <div class="ru-commit-list">
-            <div><span class="hash">4f7f527</span></div>
-            <div class="msg" style="margin-bottom:8px;">completed action bar for undo/redo/delete</div>
-            <div><span class="hash">6a335d4</span></div>
-            <div class="msg" style="margin-bottom:8px;">Add DuplicateFrameCommand and wire Undo/Redo/Duplicate Frame into Edit menu</div>
-            <div><span class="hash">2629e44</span></div>
-            <div class="msg" style="margin-bottom:8px;">Add Command base class and UndoManager for Feature 9 undo/redo infrastructure</div>
-            <div><span class="hash">a441a83</span></div>
-            <div class="msg">Write frames atomically via temp file + os.replace to protect existing frames on failed writes</div>
+            <div><span class="hash">1117d32</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add Delete Frame keyboard shortcut for Feature 12</div>
+            <div><span class="hash">05c977f</span></div>
+            <div class="msg" style="margin-bottom:8px;">created grid view of the file browser. still debating true workflow of this panel</div>
+            <div><span class="hash">e46692b</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add click-and-drag scrolling to timeline strip</div>
+            <div><span class="hash">53e6cda</span></div>
+            <div class="msg">Fix action bar toggle shifting Live View's size</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="ru-callout">
-      <b>This session — Feature 5 Timeline closed out for good with Delete, Replace, Duplicate, Marker, and Notes, and Feature 9 Undo/Redo now covers every one of those actions.</b> A real right-click <span class="mono">QMenu</span> on the timeline and a docked <span class="mono">FrameActionBar</span> both resolve to the same underlying handler methods in <span class="mono">MainWindow</span> — one implementation, two entry points. <span class="mono">DeleteFrameCommand</span> and <span class="mono">ReplaceFrameCommand</span> back up the real image/thumbnail/metadata files they're about to touch to <span class="mono">project_path/cache/undo_backups/&lt;uuid&gt;/</span> before acting, so undo restores the exact original files — a direct application of the Handbook's "Never Lose User Data" principle, not just an in-memory stack. Replace is the one command whose <span class="mono">do()</span> can't run on the main thread, since it triggers a real camera capture — it runs on <span class="mono">CaptureController</span>'s existing worker thread instead, and a new <span class="mono">UndoManager.execute_already_done()</span> records it on the undo stack afterward without re-running the capture. Redo never re-triggers the camera or assumes a duplicate's original frame number is still free — both reapply already-known-good results instead. Still open: the original Capture action and Project Settings changes aren't wrapped in Commands yet, so neither is undoable, and keyboard shortcut configurability (Feature 12) is untouched. Committed as <span class="mono">6a335d4</span> and <span class="mono">4f7f527</span>. 251/251 tests passing throughout, <span class="mono">black</span>/<span class="mono">isort</span>/<span class="mono">ruff</span> all clean.
+      <b>Feature 12 — Keyboard Shortcuts is closed for real now.</b> Every default reads from <span class="mono">Config</span>'s <span class="mono">keyboard_shortcuts</span> setting through a Qt-free <span class="mono">parse_shortcut()</span> helper instead of being hardcoded, and a fixed <span class="mono">Delete</span> shortcut now deletes the selected frame — wired to the same confirm-and-undo-backed handler the action bar's Delete button and right-click menu already shared, so no new deletion logic was needed. Two other real, tested features landed between sessions too: click-and-drag scrolling on the Timeline strip (<span class="mono">e46692b</span>), and a first grid-view pass at the Project Browser panel (<span class="mono">05c977f</span>) — Chris's own commit message flags that one as still unsettled on workflow, so treat it as in-progress, not finished. Committed as <span class="mono">1117d32</span>. 274/274 tests passing throughout, <span class="mono">black</span>/<span class="mono">isort</span>/<span class="mono">ruff</span> all clean.
     </div>
 
     <div class="ru-two-col" style="margin-top:22px; margin-bottom:60px;">
@@ -1257,8 +1261,8 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean">
-          <li><b style="color:var(--text);">Top priority:</b> keyboard shortcut configurability (Feature 12) — wire the existing hardcoded <span class="mono">QKeySequence</span> defaults to actually read from <span class="mono">Config.DEFAULT_SETTINGS["keyboard_shortcuts"]</span>, the last open item from this session's original list</li>
-          <li>Also open, lower priority: crash recovery (Feature 8), a DSLR/mirrorless camera backend (Feature 2), and rounding out Plugin Manager with a deactivate/event-bus hook and a plugins UI (Feature 13)</li>
+          <li><b style="color:var(--text);">Not yet decided:</b> whether to firm up the Project Browser panel's workflow next, or tackle Autosave (Feature 8) or the DSLR/mirrorless camera backend (Feature 2) instead — ask before assuming</li>
+          <li>Also open, lower priority: crash recovery (Feature 8), and rounding out Plugin Manager with a deactivate/event-bus hook and a plugins UI (Feature 13)</li>
           <li>Export &amp; Open in Blender remain Phase 7 territory, intentionally deferred</li>
         </ul>
       </div>
@@ -1268,7 +1272,7 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean muted">
-          <li>Keyboard shortcut configurability (Feature 12)</li>
+          <li>Project Browser panel — a real tree/grid view exists but the workflow is still being decided</li>
           <li>Crash recovery — "Recovered Project Found?" flow (Feature 8)</li>
           <li>Undoable Capture and Project Settings changes, to fully close Feature 9</li>
           <li>DSLR/mirrorless camera backend (Feature 2)</li>
