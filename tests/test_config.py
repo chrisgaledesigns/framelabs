@@ -66,6 +66,7 @@ def test_old_config_missing_new_shortcut_keys_still_gets_defaults(tmp_path):
 
     assert shortcuts["capture"] == "Space"
     assert shortcuts["duplicate_frame"] == "Ctrl+D"
+    assert shortcuts["delete_frame"] == "Delete"
     assert shortcuts["play_pause"] == "Return,Enter"
 
 

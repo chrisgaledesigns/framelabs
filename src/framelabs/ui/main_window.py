@@ -130,6 +130,15 @@ class MainWindow(QMainWindow):
         self.duplicate_frame_action.setShortcuts(self._shortcuts("duplicate_frame"))
         self.duplicate_frame_action.triggered.connect(self._on_duplicate_frame)
 
+        # Feature 12/Feature 5. Same shared no-arg handler already used by
+        # the action bar's Delete button and the right-click menu's Delete
+        # entry (see _on_delete_frame()'s docstring) -- this just gives it
+        # a keyboard shortcut too, read from Config like every other
+        # shortcut here.
+        self.delete_frame_action = QAction("Delete Frame", self)
+        self.delete_frame_action.setShortcuts(self._shortcuts("delete_frame"))
+        self.delete_frame_action.triggered.connect(self._on_delete_frame)
+
         self.play_action = QAction("Play", self)
         self.play_action.setShortcuts(self._shortcuts("play_pause"))
         self.play_action.triggered.connect(self._on_toggle_play)
@@ -203,6 +212,7 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         # Temporary home for Duplicate Frame -- see _create_actions().
         edit_menu.addAction(self.duplicate_frame_action)
+        edit_menu.addAction(self.delete_frame_action)
 
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)

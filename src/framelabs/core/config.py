@@ -26,6 +26,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "undo": "Ctrl+Z",
         "redo": "Ctrl+Shift+Z",
         "duplicate_frame": "Ctrl+D",
+        "delete_frame": "Delete",
         "play_pause": "Return,Enter",
         "open_in_blender": "B",
         "toggle_onion_skin": "O",
