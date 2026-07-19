@@ -67,6 +67,16 @@ MARKER_BORDER_COLOR = "#f59e0b"  # amber
 SELECTION_BORDER_WIDTH = 3
 SELECTION_BORDER_COLOR = "#3b82f6"  # accent blue
 
+# Backlog item #1: click-and-drag scrolling on the timeline strip,
+# iPad-style. A press that never moves more than this many pixels (global,
+# horizontal-only -- vertical wobble shouldn't cancel a click) is still a
+# plain click-to-select; only once it crosses this threshold does it turn
+# into a drag-to-scroll gesture. Small and fixed rather than
+# QApplication.startDragDistance(), since that constant is tuned for
+# drag-and-drop initiation, not click-vs-scroll disambiguation, and this
+# needs to feel immediate on a strip that's clicked constantly.
+DRAG_THRESHOLD_PX = 6
+
 
 class FrameThumbnail(QFrame):
     """A single clickable frame thumbnail in the Timeline strip.
@@ -78,6 +88,7 @@ class FrameThumbnail(QFrame):
 
     clicked = Signal(int)
     context_menu_requested = Signal(int, QPoint)
+    drag_scrolled = Signal(int)
 
     def __init__(
         self,
@@ -99,6 +110,13 @@ class FrameThumbnail(QFrame):
         """
         super().__init__()
         self._index = index
+        # Drag-vs-click state (backlog item #1). None means no press is in
+        # progress. Tracked in global screen coordinates so the delta is
+        # correct even as the mouse crosses from one thumbnail onto the
+        # next mid-drag.
+        self._press_global_x: float | None = None
+        self._last_global_x: float | None = None
+        self._dragging = False
 
         marker_width = MARKER_BORDER_WIDTH if frame.marker else 0
         self.setStyleSheet(
@@ -140,9 +158,52 @@ class FrameThumbnail(QFrame):
         outer_layout.addWidget(self._selection_frame)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override name)
-        """Emit `clicked` with this thumbnail's timeline index."""
-        self.clicked.emit(self._index)
+        """Begin tracking a possible click or drag-to-scroll gesture.
+
+        `clicked` is no longer emitted here -- it's decided on release,
+        once we know whether the gesture stayed within DRAG_THRESHOLD_PX
+        (a click) or moved past it (a drag-to-scroll, backlog item #1).
+        """
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_global_x = event.globalPosition().x()
+            self._last_global_x = self._press_global_x
+            self._dragging = False
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 (Qt override name)
+        """Turn a held left-button drag into iPad-style scroll deltas.
+
+        Emits `drag_scrolled` with the horizontal pixel delta since the
+        last move event once the total displacement from the press point
+        exceeds DRAG_THRESHOLD_PX -- TimelineWidget applies these deltas to
+        its horizontal scrollbar. Before that threshold, this is still
+        just a click in progress and nothing is emitted, so a tiny
+        press-time wobble can't turn an intended click into a scroll.
+        """
+        if (
+            self._press_global_x is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+        ):
+            current_x = event.globalPosition().x()
+            if (
+                not self._dragging
+                and abs(current_x - self._press_global_x) > DRAG_THRESHOLD_PX
+            ):
+                self._dragging = True
+            if self._dragging:
+                self.drag_scrolled.emit(int(current_x - self._last_global_x))
+            self._last_global_x = current_x
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 (Qt override name)
+        """Emit `clicked` only if this gesture ended as a click, not a drag."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._press_global_x is not None and not self._dragging:
+                self.clicked.emit(self._index)
+            self._press_global_x = None
+            self._last_global_x = None
+            self._dragging = False
+        super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event) -> None:  # noqa: N802 (Qt override name)
         """Emit `context_menu_requested` with this thumbnail's index and
@@ -233,6 +294,7 @@ class TimelineWidget(QScrollArea):
             thumbnail.context_menu_requested.connect(
                 self.frame_context_menu_requested.emit
             )
+            thumbnail.drag_scrolled.connect(self._on_drag_scrolled)
             self._strip_layout.addWidget(thumbnail)
 
     def set_current_index(self, current_index: int) -> None:
@@ -247,6 +309,19 @@ class TimelineWidget(QScrollArea):
         """
         for thumbnail in self._strip.findChildren(FrameThumbnail):
             thumbnail.set_selected(thumbnail._index == current_index)
+
+    def _on_drag_scrolled(self, delta_x: int) -> None:
+        """Scroll the strip by `delta_x` screen pixels (backlog item #1).
+
+        Connected to every FrameThumbnail's drag_scrolled signal in
+        refresh(). Uses the "content follows the finger" convention
+        (dragging right reveals frames to the left, i.e. the scrollbar
+        value goes down) to match iPad/touch-scroll behavior rather than
+        a traditional scrollbar-handle drag, which would move the other
+        way.
+        """
+        scrollbar = self.horizontalScrollBar()
+        scrollbar.setValue(scrollbar.value() - delta_x)
 
 
 class PlaybackControls(QWidget):
