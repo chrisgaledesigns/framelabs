@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt, QThread, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
-    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -38,6 +37,7 @@ from framelabs.ui.live_view_widget import LiveViewWidget
 from framelabs.ui.new_project_dialog import NewProjectDialog
 from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
+from framelabs.ui.project_browser_widget import ProjectBrowserWidget
 from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.timeline_widget import (
     FrameActionBar,
@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
+        self._wire_project_browser()
 
     def _create_actions(self) -> None:
         """Create the shared QActions used by the menu bar."""
@@ -223,12 +224,12 @@ class MainWindow(QMainWindow):
         with the Timeline strip, the per-frame action bar, and Playback
         controls stacked below it.
         """
-        self.project_browser_placeholder = self._make_placeholder("Project Browser")
+        self.project_browser_widget = ProjectBrowserWidget()
         self.live_view_widget = LiveViewWidget()
         self.inspector_panel = InspectorPanel()
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.project_browser_placeholder)
+        splitter.addWidget(self.project_browser_widget)
         splitter.addWidget(self.live_view_widget)
         splitter.addWidget(self.inspector_panel)
 
@@ -437,6 +438,20 @@ class MainWindow(QMainWindow):
         self.frame_action_bar.marker_button.clicked.connect(self._on_toggle_marker)
         self.frame_action_bar.notes_edit.editingFinished.connect(self._on_notes_edited)
 
+    def _wire_project_browser(self) -> None:
+        """Connect the Project Browser's frame_selected to the same shared
+        handler TimelineWidget uses.
+
+        ProjectBrowserWidget holds no Project/Timeline of its own (see its
+        own docstring), and emits frame_selected with the same raw
+        Project.frames/Timeline.frames index TimelineWidget.frame_selected
+        already uses -- so double-clicking a frame in the browser tree
+        goes through the exact same _on_frame_selected() path a Timeline
+        thumbnail click does, per the hand-off's "one shared set of
+        handler methods taking a raw identifier" convention.
+        """
+        self.project_browser_widget.frame_selected.connect(self._on_frame_selected)
+
     def _on_frame_selected(self, index: int) -> None:
         """React to a thumbnail click in the Timeline strip.
 
@@ -508,11 +523,22 @@ class MainWindow(QMainWindow):
         replace, duplicate, undo, redo). For a playhead-only move, call
         _move_timeline_playhead() instead, which is much cheaper and does
         no disk I/O -- critical during playback, which can tick many times
-        per second. No-op if there's no active project/timeline yet --
-        same guard pattern as _refresh_onion_skin(). Thumbnails live in
-        project_path/"thumbnails", per the project folder layout
-        established in Feature 1 and project.py's Project docstring.
+        per second. No-op for the Timeline strip itself if there's no
+        active project/timeline yet -- same guard pattern as
+        _refresh_onion_skin(). Thumbnails live in project_path/"thumbnails",
+        per the project folder layout established in Feature 1 and
+        project.py's Project docstring.
+
+        Also refreshes the Project Browser tree (backlog item #3) via
+        ProjectBrowserWidget.set_project(), since its Frames/Notes/Exports
+        branches change on exactly the same events the Timeline strip
+        does. Called unconditionally, even when self.project is None,
+        since set_project() handles that case itself (shows a "No project
+        open" placeholder row) -- unlike the Timeline strip, the browser
+        has a real, correct empty state to fall back to rather than
+        nothing to do.
         """
+        self.project_browser_widget.set_project(self.project)
         if self.project is None or self.timeline is None:
             return
         thumbnails_dir = self.project.project_path / "thumbnails"
@@ -1267,11 +1293,3 @@ class MainWindow(QMainWindow):
         self._playback_thread.wait(2000)
 
         super().closeEvent(event)
-
-    @staticmethod
-    def _make_placeholder(label_text: str) -> QLabel:
-        """Build a labeled placeholder widget for a not-yet-implemented pane."""
-        label = QLabel(label_text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("border: 1px solid gray;")
-        return label
