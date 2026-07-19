@@ -243,6 +243,13 @@ class MainWindow(QMainWindow):
 
         self.timeline_widget = TimelineWidget()
         self.frame_action_bar = FrameActionBar()
+        # Chris's "click-only" choice (session 13): the bar's controls are
+        # hidden by default, and only ever shown by _on_frame_selected()
+        # after an explicit thumbnail left-click. Uses set_bar_visible(),
+        # not a plain setVisible() on the widget -- see that method's
+        # docstring for why toggling the whole widget shifted Live View's
+        # size.
+        self.frame_action_bar.set_bar_visible(False)
         self.playback_controls = PlaybackControls()
 
         central_widget = QWidget()
@@ -439,6 +446,12 @@ class MainWindow(QMainWindow):
         handler safe regardless. Moves the playhead to the clicked frame's
         index, then refreshes Onion Skin, the Timeline strip's selection
         border, and the action bar so it reflects the newly selected frame.
+
+        This is the ONLY place that reveals the frame action bar --
+        _refresh_frame_action_bar() itself always hides it (see that
+        method's docstring), so showing it here, right after that call, is
+        what makes a left-click on a thumbnail the sole way to bring the
+        bar up, per Chris's "click-only" choice.
         """
         if self.timeline is None:
             return
@@ -446,16 +459,18 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._move_timeline_playhead()
         self._refresh_frame_action_bar()
+        self.frame_action_bar.set_bar_visible(True)
 
     def _on_frame_context_menu_requested(self, index: int, global_pos) -> None:
         """Show Feature 5's right-click menu for a timeline thumbnail.
 
         Right-clicking a frame that isn't currently selected first moves
-        the playhead to it (same as a left-click would), so the action
-        bar and the selection border both reflect the frame the menu is
-        about to act on -- the menu and the action bar are two surfaces
-        for the same underlying actions, per the hand-off's dependency
-        note, so they should never disagree about which frame is current.
+        the playhead to it (same as a left-click would), so the selection
+        border reflects the frame the menu is about to act on. The frame
+        action bar stays hidden through this, though -- per Chris's
+        "click-only" choice, right-clicking is a deliberately separate
+        access path to these same actions, not another way to reveal the
+        action bar (see _refresh_frame_action_bar()'s docstring).
         """
         if self.timeline is None:
             return
@@ -523,16 +538,31 @@ class MainWindow(QMainWindow):
         self.timeline_widget.set_current_index(self.timeline.current_index)
 
     def _refresh_frame_action_bar(self) -> None:
-        """Sync FrameActionBar's controls to whichever frame is now current.
+        """Sync FrameActionBar's controls to whichever frame is now current,
+        and hide the bar.
 
         No active project/timeline, or an empty timeline, both correctly
         resolve to Timeline.current_frame being None -- FrameActionBar's
         own set_current_frame(None) already disables and clears every
         control for exactly that case (see its docstring), so no separate
         guard is needed here.
+
+        Hiding the bar here (not just syncing its fields) is deliberate:
+        per Chris's "click-only" choice, the bar should disappear the
+        instant anything OTHER than an explicit thumbnail left-click moves
+        the current frame -- arrow keys, a new capture, undo/redo,
+        playback, right-click, even the bar's own Delete/Replace/
+        Duplicate/Marker/Notes controls (they all route through the same
+        shared handlers as the menu/shortcut paths, with no clean way to
+        tell "the bar's own button" apart from "Ctrl+D" once inside those
+        handlers -- see _duplicate_frame()/_delete_frame()'s docstrings).
+        _on_frame_selected() is the ONLY place that re-shows it, right
+        after calling this method, which is what makes "hide by default"
+        here safe rather than self-defeating.
         """
         current_frame = self.timeline.current_frame if self.timeline else None
         self.frame_action_bar.set_current_frame(current_frame)
+        self.frame_action_bar.set_bar_visible(False)
 
     def _refresh_onion_skin(self) -> None:
         """Ask the onion skin worker thread to reload overlay frames.
