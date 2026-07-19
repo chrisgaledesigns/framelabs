@@ -363,3 +363,22 @@ class FrameActionBar(QWidget):
 
         self.notes_edit.setText(frame.notes if frame is not None else "")
         self.marker_button.setChecked(frame.marker if frame is not None else False)
+
+    def set_bar_visible(self, visible: bool) -> None:
+        """Show or hide the bar's own controls, without changing its fixed
+        50px slot in MainWindow's central layout.
+
+        MainWindow's central layout gives this widget's setFixedHeight(50)
+        row a permanent slot directly above the splitter (Live View
+        included); toggling QWidget.setVisible() on the whole bar removes/
+        reinserts that slot, which visibly shifted Live View's size every
+        time the bar appeared or disappeared -- confirmed in practice by
+        Chris, see hand-off. Hiding only the border and the individual
+        child controls instead, while the outer widget's fixed height
+        never changes, keeps that 50px slot permanently reserved, so
+        nothing above it ever moves.
+        """
+        self.setStyleSheet("border: 1px solid gray;" if visible else "")
+        for button in self._buttons:
+            button.setVisible(visible)
+        self.notes_edit.setVisible(visible)
