@@ -12,18 +12,58 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtWidgets import QLabel
 
 from framelabs.project.project import Frame
 from framelabs.ui.timeline_widget import (
+    DRAG_THRESHOLD_PX,
     MARKER_BORDER_COLOR,
     SELECTION_BORDER_COLOR,
     FrameActionBar,
     FrameThumbnail,
     TimelineWidget,
 )
+
+
+def _press(widget, global_x: float, global_y: float = 50.0) -> None:
+    """Synthesize a real left-button press at the given global position."""
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(5, 5),
+        QPointF(global_x, global_y),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    widget.mousePressEvent(event)
+
+
+def _move(widget, global_x: float, global_y: float = 50.0) -> None:
+    """Synthesize a real mouse-move with the left button held down."""
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(5, 5),
+        QPointF(global_x, global_y),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    widget.mouseMoveEvent(event)
+
+
+def _release(widget, global_x: float, global_y: float = 50.0) -> None:
+    """Synthesize a real left-button release at the given global position."""
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(5, 5),
+        QPointF(global_x, global_y),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    widget.mouseReleaseEvent(event)
 
 
 def _write_real_thumbnail(thumbnails_dir: Path, frame_number: int) -> None:
@@ -419,3 +459,116 @@ def test_action_bar_set_current_frame_does_not_emit_marker_clicked(qtbot):
 
     with qtbot.assertNotEmitted(bar.marker_button.clicked):
         bar.set_current_frame(Frame(number=1, file="images/000001.png", marker=True))
+
+
+def test_small_press_release_movement_still_emits_clicked(qtbot, tmp_path):
+    """A press/release that never exceeds DRAG_THRESHOLD_PX is still a
+    plain click -- tiny hand tremor shouldn't cancel frame selection."""
+    _write_real_thumbnail(tmp_path, 1)
+    thumbnail = FrameThumbnail(
+        Frame(number=1, file="images/000001.png"),
+        tmp_path,
+        index=3,
+        selected=False,
+    )
+    qtbot.addWidget(thumbnail)
+
+    with qtbot.waitSignal(thumbnail.clicked, timeout=1000) as blocker:
+        _press(thumbnail, 100.0)
+        _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX - 1)
+        _release(thumbnail, 100.0 + DRAG_THRESHOLD_PX - 1)
+
+    assert blocker.args == [3]
+
+
+def test_movement_past_threshold_suppresses_clicked(qtbot, tmp_path):
+    """Once movement crosses DRAG_THRESHOLD_PX, this becomes a drag-to-
+    scroll gesture, not a click -- `clicked` must not fire on release."""
+    _write_real_thumbnail(tmp_path, 1)
+    thumbnail = FrameThumbnail(
+        Frame(number=1, file="images/000001.png"),
+        tmp_path,
+        index=3,
+        selected=False,
+    )
+    qtbot.addWidget(thumbnail)
+
+    with qtbot.assertNotEmitted(thumbnail.clicked):
+        _press(thumbnail, 100.0)
+        _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+        _release(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+
+
+def test_movement_past_threshold_emits_drag_scrolled_with_delta(qtbot, tmp_path):
+    """Once dragging, each move step must emit the incremental pixel
+    delta since the last move (not the total displacement from press),
+    so TimelineWidget can apply it directly to the scrollbar value."""
+    _write_real_thumbnail(tmp_path, 1)
+    thumbnail = FrameThumbnail(
+        Frame(number=1, file="images/000001.png"),
+        tmp_path,
+        index=3,
+        selected=False,
+    )
+    qtbot.addWidget(thumbnail)
+
+    deltas = []
+    thumbnail.drag_scrolled.connect(deltas.append)
+
+    _press(thumbnail, 100.0)
+    _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)  # crosses threshold
+    _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 35)  # +15 more
+    _release(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 35)
+
+    assert deltas[-1] == 15
+
+
+def test_widget_drag_scrolled_moves_horizontal_scrollbar(qtbot, tmp_path):
+    """A drag on any thumbnail must scroll TimelineWidget's own
+    horizontal scrollbar, "content follows the finger" style -- dragging
+    right (positive delta) reveals earlier frames, so the scrollbar
+    value goes down."""
+    widget = TimelineWidget()
+    qtbot.addWidget(widget)
+    frames = [Frame(number=i, file=f"images/{i:06d}.png") for i in range(1, 21)]
+    for frame in frames:
+        _write_real_thumbnail(tmp_path, frame.number)
+    widget.refresh(frames, tmp_path, current_index=0)
+    widget.resize(200, widget.height())
+    widget.show()
+    qtbot.waitExposed(widget)
+    widget._strip.adjustSize()
+
+    scrollbar = widget.horizontalScrollBar()
+    assert scrollbar.maximum() > 0  # sanity check: strip really overflows
+    scrollbar.setValue(scrollbar.maximum())
+    start_value = scrollbar.value()
+
+    thumbnail = next(iter(widget._strip.findChildren(FrameThumbnail)))
+    _press(thumbnail, 100.0)
+    _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+
+    assert scrollbar.value() == start_value - (DRAG_THRESHOLD_PX + 20)
+
+
+def test_widget_frame_selected_not_emitted_when_thumbnail_is_dragged(qtbot, tmp_path):
+    """A drag that starts on a thumbnail must not also select that frame
+    -- selection and scrolling are mutually exclusive outcomes of the
+    same gesture."""
+    widget = TimelineWidget()
+    qtbot.addWidget(widget)
+    frames = [
+        Frame(number=1, file="images/000001.png"),
+        Frame(number=2, file="images/000002.png"),
+    ]
+    for frame in frames:
+        _write_real_thumbnail(tmp_path, frame.number)
+    widget.refresh(frames, tmp_path, current_index=0)
+
+    thumbnails = widget._strip.findChildren(FrameThumbnail)
+    second_thumbnail = next(t for t in thumbnails if t._index == 1)
+
+    with qtbot.assertNotEmitted(widget.frame_selected):
+        _press(second_thumbnail, 100.0)
+        _move(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+        _release(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
