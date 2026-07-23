@@ -188,9 +188,14 @@ def test_exports_list_empty_when_folder_missing(qtbot, tmp_path):
     assert _exports_list_labels(widget) == []
 
 
-def test_double_clicking_frame_tile_emits_frame_selected_with_its_index(
+def test_double_clicking_frame_tile_emits_frame_preview_requested_with_its_index(
     qtbot, tmp_path
 ):
+    """Session 15: double-clicking a Frames tile now opens Theater View
+    (frame_preview_requested) rather than jumping the playhead
+    (frame_selected) -- see module docstring for why these are two
+    deliberately separate signals.
+    """
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(
@@ -203,10 +208,30 @@ def test_double_clicking_frame_tile_emits_frame_selected_with_its_index(
     widget.set_project(project)
     second_tile = widget._frames_grid.item(1)
 
-    with qtbot.waitSignal(widget.frame_selected, timeout=1000) as blocker:
-        widget._on_indexed_item_double_clicked(second_tile)
+    with qtbot.waitSignal(widget.frame_preview_requested, timeout=1000) as blocker:
+        widget._on_frames_grid_item_double_clicked(second_tile)
 
     assert blocker.args == [1]
+
+
+def test_double_clicking_frame_tile_does_not_emit_frame_selected(qtbot, tmp_path):
+    """Regression guard for the session-15 behavior split: opening Theater
+    View from the Frames grid must never also move the Timeline playhead.
+    """
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(
+        tmp_path,
+        [Frame(number=1, file="images/000001.png")],
+    )
+    widget.set_project(project)
+    tile = widget._frames_grid.item(0)
+
+    received = []
+    widget.frame_selected.connect(lambda *args: received.append(args))
+    widget._on_frames_grid_item_double_clicked(tile)
+
+    assert received == []
 
 
 def test_double_clicking_notes_row_emits_frame_selected_with_its_index(qtbot, tmp_path):
