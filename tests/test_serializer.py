@@ -23,6 +23,9 @@ def _make_project(project_path):
         frames=[
             Frame(number=1, file="images/000001.png", notes="First frame", marker=True)
         ],
+        audio=["audio/scratch_track.wav"],
+        references=["references/pose_sketch.png"],
+        overlays=["overlays/rough_layout.png"],
         project_path=project_path,
     )
 
@@ -55,6 +58,49 @@ def test_save_writes_expected_json_shape(tmp_path):
             "marker": True,
         }
     ]
+    assert data["audio"] == ["audio/scratch_track.wav"]
+    assert data["references"] == ["references/pose_sketch.png"]
+    assert data["overlays"] == ["overlays/rough_layout.png"]
+
+
+def test_load_v2_file_defaults_audio_references_overlays_to_empty(tmp_path):
+    # v2 files predate Project.audio/references/overlays -- loading one
+    # must not fail, and the new fields must default to empty lists per
+    # the Developer Handbook's forward-compatibility rule.
+    (tmp_path / "project.ffproj").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "name": "Old Project",
+                "fps": 12,
+                "resolution": [1920, 1080],
+                "camera": {"model": None, "lens": None},
+                "frames": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    project = ProjectSerializer.load(tmp_path)
+
+    assert project.version == CURRENT_VERSION
+    assert project.audio == []
+    assert project.references == []
+    assert project.overlays == []
+
+
+def test_load_creates_missing_audio_references_overlays_folders(tmp_path):
+    # An old project folder (pre-dating this feature) won't have these
+    # subfolders on disk. Opening it should create them transparently.
+    original = _make_project(tmp_path)
+    ProjectSerializer.save(original)
+    for stale_folder in ("audio", "references", "overlays"):
+        assert not (tmp_path / stale_folder).exists()
+
+    ProjectSerializer.load(tmp_path)
+
+    for folder in ("audio", "references", "overlays"):
+        assert (tmp_path / folder).is_dir()
 
 
 def test_save_without_project_path_raises_value_error():

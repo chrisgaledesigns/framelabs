@@ -39,7 +39,16 @@ _RESERVED_NAMES = {
     "LPT9",
 }
 
-SUBFOLDERS = ("images", "thumbnails", "cache", "exports", "metadata")
+SUBFOLDERS = (
+    "images",
+    "thumbnails",
+    "cache",
+    "exports",
+    "metadata",
+    "audio",
+    "references",
+    "overlays",
+)
 
 
 class ProjectCreationError(Exception):

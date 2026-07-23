@@ -13,15 +13,16 @@ from pathlib import Path
 
 from framelabs.project.project import Frame, Project
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 # Every project.ffproj version this serializer can still read. Per the
 # Developer Handbook ("Versioned. Forward-compatible whenever possible."),
 # loading an older file must not hard-fail just because CURRENT_VERSION has
-# moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), so
-# those fields are read with .get() defaults regardless of which supported
-# version is on disk.
-SUPPORTED_VERSIONS = (1, 2)
+# moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), and
+# v1/v2 files predate Project.audio/references/overlays (Project Browser's
+# Audio/References/Overlays sections), so those fields are read with
+# .get() defaults regardless of which supported version is on disk.
+SUPPORTED_VERSIONS = (1, 2, 3)
 
 PROJECT_FILENAME = "project.ffproj"
 
@@ -73,6 +74,9 @@ class ProjectSerializer:
                 }
                 for frame in project.frames
             ],
+            "audio": list(project.audio),
+            "references": list(project.references),
+            "overlays": list(project.overlays),
         }
 
         file_path = project.project_path / PROJECT_FILENAME
@@ -143,11 +147,23 @@ class ProjectSerializer:
                 camera_model=camera.get("model"),
                 camera_lens=camera.get("lens"),
                 frames=frames,
+                audio=list(data.get("audio", [])),
+                references=list(data.get("references", [])),
+                overlays=list(data.get("overlays", [])),
                 project_path=project_path,
             )
         except KeyError as exc:
             raise ProjectLoadError(
                 f"Project file is missing required field {exc}: {file_path}"
             ) from exc
+
+        # Projects created before Project.audio/references/overlays existed
+        # (schema v1/v2) won't have these subfolders on disk yet. Per the
+        # Developer Handbook's "forward-compatible whenever possible" rule,
+        # opening an old project transparently upgrades it -- create the
+        # missing folders now rather than erroring the first time a user
+        # tries to add an audio/reference/overlay file.
+        for subfolder in ("audio", "references", "overlays"):
+            (project_path / subfolder).mkdir(exist_ok=True)
 
         return project

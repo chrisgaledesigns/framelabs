@@ -47,6 +47,17 @@ class Project:
         camera_model: Name of the camera used, if known.
         camera_lens: Lens description, if known.
         frames: Ordered list of captured frames.
+        audio: Relative paths (from the project root) of audio files added
+            to the project, e.g. "audio/scratch_track.wav". Files
+            themselves live under the project's `audio/` folder.
+        references: Relative paths of reference files added to the
+            project, e.g. "references/pose_sketch.png". References are
+            always added from outside the app (dragged in from the OS
+            file browser) — never copied from a captured Frame. Files
+            live under the project's `references/` folder.
+        overlays: Relative paths of overlay image files added to the
+            project, e.g. "overlays/rough_layout.png". Files live under
+            the project's `overlays/` folder.
         project_path: Filesystem folder this project lives in. Not part of
             the serialized project.ffproj file — set in memory after a
             project is created or loaded, since a project shouldn't
@@ -61,4 +72,7 @@ class Project:
     camera_model: str | None
     camera_lens: str | None
     frames: list[Frame] = field(default_factory=list)
+    audio: list[str] = field(default_factory=list)
+    references: list[str] = field(default_factory=list)
+    overlays: list[str] = field(default_factory=list)
     project_path: Path | None = None
