@@ -50,8 +50,9 @@ double-clicked, per Chris's explicit follow-up choice (session 15):
   Timeline playhead to that frame, exactly as before, same as a Timeline
   strip thumbnail click.
 - Frames grid: double-click now emits a SEPARATE signal,
-  frame_preview_requested(index), which opens a full-screen Theater View
-  preview (see ui/theater_view_dialog.py) instead. This is deliberately
+  frame_preview_requested(index), which opens a movable/resizable Theater
+  View preview window (see ui/theater_view_dialog.py) instead. This is
+  deliberately
   NOT routed through frame_selected -- per Chris's explicit choice,
   previewing a frame in Theater View must not move the Timeline's
   playhead or reveal the frame action bar, unlike every other

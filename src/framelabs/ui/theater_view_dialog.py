@@ -1,8 +1,11 @@
-"""Theater View dialog -- full-screen frame preview for the Project Browser.
+"""Theater View dialog -- movable/resizable frame preview for the Project
+Browser.
 
 Implements Chris's session-15 follow-up on the Project Browser panel
 (backlog item #3): double-clicking a frame tile in the Frames grid opens a
-full-screen preview of that frame's real image. This is deliberately
+large preview of that frame's real image, in a normal, movable, resizable
+window (not full-screen -- Chris asked for this explicitly after the
+initial full-screen version). This is deliberately
 DIFFERENT from every other double-click/click path already in this app
 (the Timeline strip, and the Project Browser's own Notes list), which
 moves the Timeline's playhead. Per Chris's explicit choice, opening this
@@ -48,9 +51,17 @@ _BACKGROUND_STYLE = "background-color: #141414;"
 _POSITION_LABEL_STYLE = "color: white; font-size: 14px;"
 _PLACEHOLDER_LABEL_STYLE = "color: white;"
 
+# Default size is generous enough to read a frame clearly on a typical
+# monitor without opening full-screen; minimum keeps the position label
+# and Close button usable if Chris shrinks the window a lot.
+_DEFAULT_WIDTH = 1100
+_DEFAULT_HEIGHT = 750
+_MINIMUM_WIDTH = 400
+_MINIMUM_HEIGHT = 300
+
 
 class TheaterViewDialog(QDialog):
-    """Full-screen, read-only preview of a project's frames.
+    """Movable, resizable, read-only preview of a project's frames.
 
     Construct with the project's full ordered frame list (Timeline.frames
     -- already sorted by frame number, the same list every raw frame
@@ -79,8 +90,13 @@ class TheaterViewDialog(QDialog):
         self._current_pixmap: QPixmap | None = None
 
         self.setWindowTitle("Theater View")
-        self.setWindowState(Qt.WindowState.WindowFullScreen)
         self.setStyleSheet(_BACKGROUND_STYLE)
+        # Normal, movable, resizable window -- not full-screen. QDialog is
+        # resizable by default (no fixed size policy is set below), and
+        # keeping the native title bar is what makes it draggable.
+        self.setSizeGripEnabled(True)
+        self.resize(_DEFAULT_WIDTH, _DEFAULT_HEIGHT)
+        self.setMinimumSize(_MINIMUM_WIDTH, _MINIMUM_HEIGHT)
 
         self._build_ui()
         self._load_current_frame()

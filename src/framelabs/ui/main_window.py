@@ -516,7 +516,7 @@ class MainWindow(QMainWindow):
         self.frame_action_bar.set_bar_visible(True)
 
     def _on_frame_preview_requested(self, index: int) -> None:
-        """Open a full-screen Theater View preview for frame `index`.
+        """Open a movable/resizable Theater View preview for frame `index`.
 
         Deliberately does NOT call self.timeline.go_to_index() or
         _on_frame_selected() -- per Chris's explicit choice, previewing a
