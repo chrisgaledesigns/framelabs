@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PySide6.QtCore import QPoint
 
 from framelabs.project.project import Frame, Project
 from framelabs.ui.project_browser_widget import FRAME_TILE_SIZE, ProjectBrowserWidget
@@ -239,3 +240,82 @@ def test_set_project_none_after_real_project_resets_to_placeholder(qtbot, tmp_pa
     for section in widget._section_widgets():
         assert section.isHidden()
     assert _frames_grid_labels(widget) == []
+
+
+def test_right_clicking_frame_tile_emits_frame_context_menu_requested(qtbot, tmp_path):
+    """Right-clicking a Frames tile reports the same (index, global_pos)
+    shape TimelineWidget's own frame_context_menu_requested does, so
+    MainWindow can wire it straight into its existing handler.
+    """
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(
+        tmp_path,
+        [
+            Frame(number=1, file="images/000001.png"),
+            Frame(number=2, file="images/000002.png"),
+        ],
+    )
+    widget.set_project(project)
+    second_tile = widget._frames_grid.item(1)
+    pos = widget._frames_grid.visualItemRect(second_tile).center()
+
+    with qtbot.waitSignal(widget.frame_context_menu_requested, timeout=1000) as blocker:
+        widget._on_frames_grid_context_menu_requested(pos)
+
+    assert blocker.args[0] == 1
+
+
+def test_right_clicking_empty_frames_area_emits_nothing(qtbot, tmp_path):
+    """No signal if the right-click didn't land on a real tile."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [Frame(number=1, file="images/000001.png")])
+    widget.set_project(project)
+
+    received = []
+    widget.frame_context_menu_requested.connect(lambda *args: received.append(args))
+    widget._on_frames_grid_context_menu_requested(QPoint(9999, 9999))
+
+    assert received == []
+
+
+def test_right_clicking_notes_row_emits_note_context_menu_requested(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(
+        tmp_path,
+        [
+            Frame(number=1, file="images/000001.png", notes=""),
+            Frame(number=2, file="images/000002.png", notes="Reset puppet"),
+        ],
+    )
+    widget.set_project(project)
+    notes_row = widget._notes_list.item(0)
+    pos = widget._notes_list.visualItemRect(notes_row).center()
+
+    with qtbot.waitSignal(widget.note_context_menu_requested, timeout=1000) as blocker:
+        widget._on_notes_list_context_menu_requested(pos)
+
+    assert blocker.args[0] == 1
+
+
+def test_right_clicking_export_row_emits_export_context_menu_requested_with_filename(
+    qtbot, tmp_path
+):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    exports_dir = project.project_path / "exports"
+    exports_dir.mkdir()
+    (exports_dir / "robot_walk.blend").write_text("fake blend contents")
+    widget.set_project(project)
+    export_row = widget._exports_list.item(0)
+    pos = widget._exports_list.visualItemRect(export_row).center()
+
+    with qtbot.waitSignal(
+        widget.export_context_menu_requested, timeout=1000
+    ) as blocker:
+        widget._on_exports_list_context_menu_requested(pos)
+
+    assert blocker.args[0] == "robot_walk.blend"

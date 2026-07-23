@@ -23,11 +23,30 @@ filenames, neither of which benefits from a thumbnail grid.
 Like TimelineWidget and InspectorPanel, this widget holds no Project of its
 own -- MainWindow calls set_project() whenever the underlying project
 changes.
+
+Each section also supports right-click actions, not just browsing --
+Chris's explicit feedback after the first version was that the panel was
+"just a media browser but you can't really do anything with it." This
+widget itself only reports WHAT was right-clicked (raw frame index for
+Frames/Notes, filename for Exports) and WHERE, exactly the same
+"widget reports, MainWindow decides" split TimelineWidget already
+established for its own right-click menu -- MainWindow owns the actual
+QMenu contents and the resulting actions in every case:
+
+- Frames grid: emits frame_context_menu_requested(index, global_pos),
+  the exact same signal shape as TimelineWidget's, so MainWindow can wire
+  it straight into its existing _on_frame_context_menu_requested handler
+  with zero new menu logic -- Delete/Replace/Duplicate/Marker, identical
+  to the Timeline strip's own right-click menu.
+- Notes list: emits note_context_menu_requested(index, global_pos) --
+  MainWindow shows Jump to Frame / Edit Note / Clear Note.
+- Exports list: emits export_context_menu_requested(filename, global_pos)
+  -- MainWindow shows Open File / Open Containing Folder / Delete Export.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QLabel,
@@ -64,6 +83,18 @@ class ProjectBrowserWidget(QWidget):
     # TimelineWidget.frame_selected's contract.
     frame_selected = Signal(int)
 
+    # Same (index, global_pos) shape as TimelineWidget.frame_context_menu_
+    # requested -- lets MainWindow wire this directly into its existing
+    # handler for the Frames grid with no new menu logic.
+    frame_context_menu_requested = Signal(int, QPoint)
+
+    # Same raw-index contract as frame_selected, for the Notes list.
+    note_context_menu_requested = Signal(int, QPoint)
+
+    # Exports has no frame index to report -- just which file was
+    # right-clicked, by name (matches _build_exports_list's item text).
+    export_context_menu_requested = Signal(str, QPoint)
+
     def __init__(self) -> None:
         """Build the panel's three sections (initially empty/hidden)."""
         super().__init__()
@@ -87,6 +118,10 @@ class ProjectBrowserWidget(QWidget):
         self._frames_grid.itemDoubleClicked.connect(
             self._on_indexed_item_double_clicked
         )
+        self._frames_grid.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._frames_grid.customContextMenuRequested.connect(
+            self._on_frames_grid_context_menu_requested
+        )
         layout.addWidget(self._frames_grid, 2)
 
         self._notes_header = self._make_header("Notes")
@@ -94,12 +129,20 @@ class ProjectBrowserWidget(QWidget):
 
         self._notes_list = QListWidget()
         self._notes_list.itemDoubleClicked.connect(self._on_indexed_item_double_clicked)
+        self._notes_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._notes_list.customContextMenuRequested.connect(
+            self._on_notes_list_context_menu_requested
+        )
         layout.addWidget(self._notes_list, 1)
 
         self._exports_header = self._make_header("Exports")
         layout.addWidget(self._exports_header)
 
         self._exports_list = QListWidget()
+        self._exports_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._exports_list.customContextMenuRequested.connect(
+            self._on_exports_list_context_menu_requested
+        )
         layout.addWidget(self._exports_list, 1)
 
         self._show_no_project()
@@ -258,3 +301,43 @@ class ProjectBrowserWidget(QWidget):
         index = item.data(_FRAME_INDEX_ROLE)
         if index is not None:
             self.frame_selected.emit(index)
+
+    def _on_frames_grid_context_menu_requested(self, pos: QPoint) -> None:
+        """Emit frame_context_menu_requested for the tile under `pos`.
+
+        Same (index, global_pos) shape as TimelineWidget's own signal --
+        see the module docstring for why this lets MainWindow reuse its
+        existing handler as-is.
+        """
+        item = self._frames_grid.itemAt(pos)
+        if item is None:
+            return
+        index = item.data(_FRAME_INDEX_ROLE)
+        if index is None:
+            return
+        global_pos = self._frames_grid.viewport().mapToGlobal(pos)
+        self.frame_context_menu_requested.emit(index, global_pos)
+
+    def _on_notes_list_context_menu_requested(self, pos: QPoint) -> None:
+        """Emit note_context_menu_requested for the row under `pos`."""
+        item = self._notes_list.itemAt(pos)
+        if item is None:
+            return
+        index = item.data(_FRAME_INDEX_ROLE)
+        if index is None:
+            return
+        global_pos = self._notes_list.viewport().mapToGlobal(pos)
+        self.note_context_menu_requested.emit(index, global_pos)
+
+    def _on_exports_list_context_menu_requested(self, pos: QPoint) -> None:
+        """Emit export_context_menu_requested for the file under `pos`.
+
+        Reports the filename (the item's own display text, set directly
+        from Path.name in _build_exports_list) rather than a stashed data
+        role, since Exports has no frame index to carry.
+        """
+        item = self._exports_list.itemAt(pos)
+        if item is None:
+            return
+        global_pos = self._exports_list.viewport().mapToGlobal(pos)
+        self.export_context_menu_requested.emit(item.text(), global_pos)
