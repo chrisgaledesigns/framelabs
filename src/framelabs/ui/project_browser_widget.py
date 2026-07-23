@@ -42,6 +42,21 @@ QMenu contents and the resulting actions in every case:
   MainWindow shows Jump to Frame / Edit Note / Clear Note.
 - Exports list: emits export_context_menu_requested(filename, global_pos)
   -- MainWindow shows Open File / Open Containing Folder / Delete Export.
+
+Double-click has two DIFFERENT meanings depending on which section is
+double-clicked, per Chris's explicit follow-up choice (session 15):
+
+- Notes list: double-click still emits frame_selected(index) -- jumps the
+  Timeline playhead to that frame, exactly as before, same as a Timeline
+  strip thumbnail click.
+- Frames grid: double-click now emits a SEPARATE signal,
+  frame_preview_requested(index), which opens a full-screen Theater View
+  preview (see ui/theater_view_dialog.py) instead. This is deliberately
+  NOT routed through frame_selected -- per Chris's explicit choice,
+  previewing a frame in Theater View must not move the Timeline's
+  playhead or reveal the frame action bar, unlike every other
+  click/double-click path in this app. Right-click on the Frames grid is
+  unaffected -- it still emits frame_context_menu_requested as above.
 """
 
 from __future__ import annotations
@@ -88,6 +103,14 @@ class ProjectBrowserWidget(QWidget):
     # handler for the Frames grid with no new menu logic.
     frame_context_menu_requested = Signal(int, QPoint)
 
+    # Raw index into Project.frames/Timeline.frames of a Frames-grid tile
+    # that was double-clicked, requesting a read-only Theater View preview.
+    # Deliberately a SEPARATE signal from frame_selected (see module
+    # docstring) -- MainWindow must not route this through
+    # _on_frame_selected, since previewing a frame must not move the
+    # Timeline's playhead.
+    frame_preview_requested = Signal(int)
+
     # Same raw-index contract as frame_selected, for the Notes list.
     note_context_menu_requested = Signal(int, QPoint)
 
@@ -116,7 +139,7 @@ class ProjectBrowserWidget(QWidget):
         self._frames_grid.setIconSize(QSize(FRAME_TILE_SIZE, FRAME_TILE_SIZE))
         self._frames_grid.setSpacing(4)
         self._frames_grid.itemDoubleClicked.connect(
-            self._on_indexed_item_double_clicked
+            self._on_frames_grid_item_double_clicked
         )
         self._frames_grid.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._frames_grid.customContextMenuRequested.connect(
@@ -288,19 +311,31 @@ class ProjectBrowserWidget(QWidget):
                 self._exports_list.addItem(QListWidgetItem(path.name))
 
     def _on_indexed_item_double_clicked(self, item: QListWidgetItem) -> None:
-        """Emit frame_selected if a real Frame/Notes row was double-clicked.
+        """Emit frame_selected if a real Notes row was double-clicked.
 
-        Shared by both the Frames grid and the Notes list, since both
-        carry the same _FRAME_INDEX_ROLE data. Double-click, not
-        single-click, deliberately -- unlike TimelineWidget's
-        single-click-to-select thumbnails, this panel is browsed by
-        scrolling/scanning as much as it's used for navigation, so a
-        single click here shouldn't risk moving the playhead by accident
-        while Chris is just looking around.
+        Used by the Notes list only (see module docstring for why the
+        Frames grid uses a separate handler/signal as of session 15).
+        Double-click, not single-click, deliberately -- unlike
+        TimelineWidget's single-click-to-select thumbnails, this panel is
+        browsed by scrolling/scanning as much as it's used for
+        navigation, so a single click here shouldn't risk moving the
+        playhead by accident while Chris is just looking around.
         """
         index = item.data(_FRAME_INDEX_ROLE)
         if index is not None:
             self.frame_selected.emit(index)
+
+    def _on_frames_grid_item_double_clicked(self, item: QListWidgetItem) -> None:
+        """Emit frame_preview_requested for a double-clicked Frames tile.
+
+        Deliberately distinct from _on_indexed_item_double_clicked (see
+        module docstring): opening the Theater View preview must not move
+        the Timeline's playhead, unlike double-clicking a Notes row or a
+        Timeline strip thumbnail.
+        """
+        index = item.data(_FRAME_INDEX_ROLE)
+        if index is not None:
+            self.frame_preview_requested.emit(index)
 
     def _on_frames_grid_context_menu_requested(self, pos: QPoint) -> None:
         """Emit frame_context_menu_requested for the tile under `pos`.

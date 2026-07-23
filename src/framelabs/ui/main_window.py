@@ -39,6 +39,7 @@ from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_browser_widget import ProjectBrowserWidget
 from framelabs.ui.project_controller import ProjectController
+from framelabs.ui.theater_view_dialog import TheaterViewDialog
 from framelabs.ui.timeline_widget import (
     FrameActionBar,
     PlaybackControls,
@@ -467,6 +468,14 @@ class MainWindow(QMainWindow):
         Delete/Replace/Duplicate/Marker menu right-clicking it in the
         Timeline strip does. Notes and Exports get their own handlers,
         since they offer a different set of actions.
+
+        Double-clicking a Frames grid tile is deliberately NOT wired to
+        frame_selected/_on_frame_selected -- it emits a separate
+        frame_preview_requested signal instead (see
+        ProjectBrowserWidget's module docstring), routed to
+        _on_frame_preview_requested below, per Chris's explicit choice
+        that opening the Theater View preview must not move the
+        Timeline's playhead or reveal the frame action bar.
         """
         self.project_browser_widget.frame_selected.connect(self._on_frame_selected)
         self.project_browser_widget.frame_context_menu_requested.connect(
@@ -477,6 +486,9 @@ class MainWindow(QMainWindow):
         )
         self.project_browser_widget.export_context_menu_requested.connect(
             self._on_project_browser_export_context_menu_requested
+        )
+        self.project_browser_widget.frame_preview_requested.connect(
+            self._on_frame_preview_requested
         )
 
     def _on_frame_selected(self, index: int) -> None:
@@ -502,6 +514,28 @@ class MainWindow(QMainWindow):
         self._move_timeline_playhead()
         self._refresh_frame_action_bar()
         self.frame_action_bar.set_bar_visible(True)
+
+    def _on_frame_preview_requested(self, index: int) -> None:
+        """Open a full-screen Theater View preview for frame `index`.
+
+        Deliberately does NOT call self.timeline.go_to_index() or
+        _on_frame_selected() -- per Chris's explicit choice, previewing a
+        frame from the Project Browser's Frames grid must not move the
+        Timeline's playhead or reveal the frame action bar, unlike every
+        other click/double-click path in this file. `index` is into
+        self.timeline.frames (the same ordered list
+        ProjectBrowserWidget's own _ordered_frames() mirrors), so it's
+        passed straight through unmodified. Modal (`exec()`), so the
+        dialog owns input focus for its own Left/Right/Escape browsing
+        until closed, then control returns here with no other state
+        touched in between.
+        """
+        if self.project is None or self.timeline is None:
+            return
+        dialog = TheaterViewDialog(
+            self.project.project_path, self.timeline.frames, index, parent=self
+        )
+        dialog.exec()
 
     def _on_frame_context_menu_requested(self, index: int, global_pos) -> None:
         """Show Feature 5's right-click menu for a timeline thumbnail.
