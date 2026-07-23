@@ -449,8 +449,7 @@ class MainWindow(QMainWindow):
         self.frame_action_bar.notes_edit.editingFinished.connect(self._on_notes_edited)
 
     def _wire_project_browser(self) -> None:
-        """Connect the Project Browser's frame_selected to the same shared
-        handler TimelineWidget uses.
+        """Connect the Project Browser's signals to their handlers.
 
         ProjectBrowserWidget holds no Project/Timeline of its own (see its
         own docstring), and emits frame_selected with the same raw
@@ -459,8 +458,26 @@ class MainWindow(QMainWindow):
         goes through the exact same _on_frame_selected() path a Timeline
         thumbnail click does, per the hand-off's "one shared set of
         handler methods taking a raw identifier" convention.
+
+        The Frames grid's right-click menu reuses
+        _on_frame_context_menu_requested directly, with zero new logic --
+        ProjectBrowserWidget.frame_context_menu_requested emits the exact
+        same (index, global_pos) shape TimelineWidget's own signal does,
+        so right-clicking a frame in the browser shows the identical
+        Delete/Replace/Duplicate/Marker menu right-clicking it in the
+        Timeline strip does. Notes and Exports get their own handlers,
+        since they offer a different set of actions.
         """
         self.project_browser_widget.frame_selected.connect(self._on_frame_selected)
+        self.project_browser_widget.frame_context_menu_requested.connect(
+            self._on_frame_context_menu_requested
+        )
+        self.project_browser_widget.note_context_menu_requested.connect(
+            self._on_project_browser_note_context_menu_requested
+        )
+        self.project_browser_widget.export_context_menu_requested.connect(
+            self._on_project_browser_export_context_menu_requested
+        )
 
     def _on_frame_selected(self, index: int) -> None:
         """React to a thumbnail click in the Timeline strip.
@@ -523,6 +540,124 @@ class MainWindow(QMainWindow):
             self._duplicate_frame(frame.number)
         elif chosen is marker_action:
             self._toggle_marker(frame.number)
+
+    def _on_project_browser_note_context_menu_requested(
+        self, index: int, global_pos
+    ) -> None:
+        """Show the Project Browser Notes list's right-click menu.
+
+        Jump to Frame: navigates only, same as a double-click on the same
+        row -- routed through the shared _on_frame_selected() path.
+        Edit Note: navigates AND gives keyboard focus to the action bar's
+        Notes field with its text selected, ready to type over -- the
+        fastest path from "I see a note I want to change" to actually
+        changing it. Clear Note: a direct SetFrameNotesCommand to "",
+        deliberately without navigating away first, since clearing a note
+        while browsing several frames' notes shouldn't interrupt browsing
+        by also jumping the Timeline playhead.
+        """
+        if self.timeline is None:
+            return
+        frame = self.timeline.frames[index]
+
+        menu = QMenu(self)
+        jump_action = menu.addAction("Jump to Frame")
+        edit_action = menu.addAction("Edit Note")
+        clear_action = menu.addAction("Clear Note")
+        clear_action.setEnabled(bool(frame.notes.strip()))
+        chosen = menu.exec(global_pos)
+
+        if chosen is jump_action:
+            self._on_frame_selected(index)
+        elif chosen is edit_action:
+            self._on_frame_selected(index)
+            self.frame_action_bar.notes_edit.setFocus()
+            self.frame_action_bar.notes_edit.selectAll()
+        elif chosen is clear_action:
+            self._clear_frame_notes(frame.number)
+
+    def _clear_frame_notes(self, frame_number: int) -> None:
+        """Set frame_number's notes to "" via an undoable command.
+
+        Shared logic behind the Notes list's Clear Note action -- kept as
+        its own method (rather than inlined in the menu handler above) in
+        case another entry point needs to clear a note the same way in
+        the future, matching how _delete_frame()/_replace_frame()/
+        _duplicate_frame() are already split from their _on_* callers.
+        """
+        if self.project is None:
+            return
+        command = SetFrameNotesCommand(self.project, self.event_bus, frame_number, "")
+        self.undo_manager.execute(command)
+        self._update_undo_redo_actions()
+        self._refresh_timeline_widget()
+        if self.timeline is not None and self.timeline.current_frame is not None:
+            if self.timeline.current_frame.number == frame_number:
+                self.frame_action_bar.notes_edit.setText("")
+
+    def _on_project_browser_export_context_menu_requested(
+        self, filename: str, global_pos
+    ) -> None:
+        """Show the Project Browser Exports list's right-click menu.
+
+        Open File launches the export with the OS's default handler for
+        its type (e.g. the system video player for a rendered clip).
+        Open Containing Folder opens project_path/exports itself, the
+        same QDesktopServices.openUrl() pattern _show_missing_frames_
+        dialog() already uses for "Locate Missing Files" -- there's no
+        cross-platform way to open a folder with one specific file
+        pre-selected, so this opens the folder and leaves finding the
+        file to the user, same tradeoff as that existing call site.
+        Delete Export removes the file from disk after confirmation.
+        Exports are regenerated output, not source data (the Feature 10
+        exporter that will eventually populate this folder can always
+        produce the file again), so this is a plain confirm-then-delete
+        with no undo -- unlike Delete Frame, which protects irreplaceable
+        captured images.
+        """
+        if self.project is None or self.project.project_path is None:
+            return
+        exports_dir = self.project.project_path / "exports"
+        file_path = exports_dir / filename
+
+        menu = QMenu(self)
+        open_action = menu.addAction("Open File")
+        open_folder_action = menu.addAction("Open Containing Folder")
+        delete_action = menu.addAction("Delete Export")
+        chosen = menu.exec(global_pos)
+
+        if chosen is open_action:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path)))
+        elif chosen is open_folder_action:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(exports_dir)))
+        elif chosen is delete_action:
+            self._delete_export(file_path)
+
+    def _delete_export(self, file_path: Path) -> None:
+        """Confirm, then permanently delete an export file from disk.
+
+        No undo -- see _on_project_browser_export_context_menu_requested's
+        docstring for why that's the deliberate choice for exports
+        specifically, unlike every frame-destroying action in this file.
+        """
+        confirm = QMessageBox.question(
+            self,
+            "Delete Export",
+            f'Delete "{file_path.name}"? This cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            file_path.unlink()
+        except OSError as exc:
+            logger.error("Failed to delete export %s: %s", file_path, exc)
+            QMessageBox.warning(
+                self, "Delete Failed", f"Could not delete {file_path.name}."
+            )
+            return
+        logger.info("Export deleted: %s", file_path)
+        self.project_browser_widget.set_project(self.project)
 
     def _refresh_timeline_widget(self) -> None:
         """Rebuild the Timeline strip to match the current project/timeline.
@@ -938,6 +1073,7 @@ class MainWindow(QMainWindow):
         )
         self.undo_manager.execute(command)
         self._update_undo_redo_actions()
+        self._refresh_timeline_widget()
 
     def _on_undo(self) -> None:
         """Undo the most recently executed command, per Feature 9.
