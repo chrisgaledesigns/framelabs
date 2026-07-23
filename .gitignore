@@ -222,3 +222,4 @@ test_capture.png
 # Manually-created test projects (via File > New Project during UI testing)
 # should be created inside this folder so they're never accidentally committed.
 manual_test_projects/
+*.patch
