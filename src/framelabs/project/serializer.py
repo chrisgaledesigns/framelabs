@@ -56,6 +56,25 @@ class ProjectSerializer:
         if project.project_path is None:
             raise ValueError("Cannot save a project with no project_path set.")
 
+        ProjectSerializer.save_to_path(project, project.project_path / PROJECT_FILENAME)
+
+    @staticmethod
+    def save_to_path(project: Project, file_path: Path) -> None:
+        """Write a Project's data as JSON to an arbitrary file path.
+
+        Same JSON schema as save(), but writes to file_path directly
+        instead of deriving it from project.project_path. Exists so
+        project/autosave.py can write timestamped snapshots (Feature 8)
+        using the exact same codec as the real project.ffproj, without
+        this module knowing anything about autosaving -- autosave.py
+        calls this directly rather than duplicating the schema.
+
+        Args:
+            project: The project to write. project.project_path is not
+                consulted here; only file_path is used as the write
+                target.
+            file_path: Exact file to write to.
+        """
         data = {
             "version": project.version,
             "name": project.name,
@@ -79,7 +98,6 @@ class ProjectSerializer:
             "overlays": list(project.overlays),
         }
 
-        file_path = project.project_path / PROJECT_FILENAME
         file_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     @staticmethod
@@ -101,8 +119,32 @@ class ProjectSerializer:
             ProjectLoadError: If the file is missing, malformed, missing
                 required fields, or has an unsupported version.
         """
-        file_path = project_path / PROJECT_FILENAME
+        return ProjectSerializer.load_from_path(
+            project_path / PROJECT_FILENAME, project_path
+        )
 
+    @staticmethod
+    def load_from_path(file_path: Path, project_path: Path) -> Project:
+        """Load a Project's JSON from an arbitrary file, with project_path set.
+
+        Same codec and validation as load(), but reads from file_path
+        directly instead of deriving it from project_path. Exists so
+        project/autosave.py can restore a Project from a timestamped
+        autosave snapshot (Feature 8's crash recovery) rather than only
+        ever from project.ffproj itself -- project_path is still passed
+        in separately so the restored Project points at the real project
+        folder, not the autosave snapshot's own location.
+
+        Args:
+            file_path: Exact file to read JSON from.
+            project_path: The project folder to set on the returned
+                Project, and where the audio/references/overlays
+                subfolders are created if missing.
+
+        Raises:
+            ProjectLoadError: If the file is missing, malformed, missing
+                required fields, or has an unsupported version.
+        """
         try:
             raw_text = file_path.read_text(encoding="utf-8")
         except OSError as exc:
