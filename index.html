@@ -35,6 +35,7 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
+    position: relative;
   }
   a{ color:inherit; text-decoration:none; }
   ul{ list-style:none; }
@@ -89,7 +90,7 @@
   /* ---------- nav ---------- */
   .nav{
     position:sticky; top:0; z-index:100;
-    background: rgba(18,21,28,.86); backdrop-filter: blur(10px);
+    background: rgba(18,21,28,.25); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
   }
   .nav-inner{
@@ -116,6 +117,7 @@
   /* ---------- routing ---------- */
   .site-page{ display:none; }
   .site-page.active{ display:block; animation: fadein .35s ease; }
+  .site-page{ position: relative; z-index: 1; }
   @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
   /* ================= HOME ================= */
@@ -125,6 +127,7 @@
   .hero.hero-solo{ max-width:720px; margin:0 auto; text-align:center; }
   .hero h1{ font-size: 50px; line-height:1.1; margin-bottom:20px; }
   .hero h1 .accent{ color: var(--teal); }
+  .hero h1 .blender-color{ color: #E87D0D; }
   .hero p.lead{ color: var(--muted); font-size:16.5px; max-width:560px; margin:0 auto 32px auto; line-height:1.65; }
   .hero-ctas{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:36px; justify-content:center; }
   .hero-meta{
@@ -137,6 +140,86 @@
     animation: blink 1.6s infinite;
   }
   @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  /* ---------- animated background blobs ---------- */
+ .hero-bg{
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%;
+  height: 900px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+}
+  .hero-bg .blob{
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(140px);
+    mix-blend-mode: color-burn;
+    opacity: 0.4;
+  }
+  .hero-bg .blob-1{
+    width: 520px; height: 520px;
+    background: #6E3AFF;
+    top: -140px; left: -80px;
+    animation: float1 22s ease-in-out infinite;
+  }
+  .hero-bg .blob-2{
+    width: 480px; height: 480px;
+    background: #2E6BFF;
+    top: -100px; right: 10%;
+    animation: float2 26s ease-in-out infinite;
+  }
+  .hero-bg .blob-3{
+    width: 560px; height: 560px;
+    background: #F2694B;
+    top: 160px; left: 30%;
+    animation: float3 20s ease-in-out infinite;
+  }
+  .hero-bg .blob-4{
+    width: 520px; height: 520px;
+    background: #2FBF71;
+    bottom: -220px; right: -60px;
+    animation: float4 24s ease-in-out infinite;
+  }
+  .hero-bg .blob-5{
+  width: 600px; height: 900px;
+  background: #000000;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  filter: blur(100px);
+  opacity: .5;
+}
+  @keyframes float1{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(160px, 80px) scale(1.15); }
+  50%  { transform: translate(60px, 180px) scale(0.95); }
+  75%  { transform: translate(-100px, 60px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float2{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-140px, 100px) scale(1.1); }
+  50%  { transform: translate(-60px, -80px) scale(1.2); }
+  75%  { transform: translate(100px, -40px) scale(0.9); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float3{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(120px, -140px) scale(1.2); }
+  50%  { transform: translate(-80px, -60px) scale(0.9); }
+  75%  { transform: translate(-140px, 100px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float4{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-100px, -120px) scale(1.1); }
+  50%  { transform: translate(140px, -60px) scale(1.15); }
+  75%  { transform: translate(60px, 120px) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
 
   /* small camera rig, reused inside the main-window mockup below */
   .rig{ position:absolute; left:50%; bottom:34px; transform:translateX(-50%); }
@@ -432,20 +515,19 @@
 </style>
 </head>
 <body>
+<div class="hero-bg" aria-hidden="true">
+  <span class="blob blob-1"></span>
+  <span class="blob blob-2"></span>
+  <span class="blob blob-3"></span>
+  <span class="blob blob-4"></span>
+  <span class="blob blob-5"></span>
+</div>
 
 <!-- ============ NAV ============ -->
 <header class="nav" id="siteNav">
   <div class="nav-inner">
     <a class="brand" href="#home" data-page="home">
-      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-        <rect x="1" y="1" width="28" height="28" rx="7" stroke="#4FD8C4" stroke-width="1.6"/>
-        <circle cx="5.5" cy="7" r="1.3" fill="#4FD8C4"/>
-        <circle cx="5.5" cy="23" r="1.3" fill="#4FD8C4"/>
-        <circle cx="24.5" cy="7" r="1.3" fill="#4FD8C4"/>
-        <circle cx="24.5" cy="23" r="1.3" fill="#4FD8C4"/>
-        <circle cx="15" cy="15" r="4.2" fill="none" stroke="#F2B84B" stroke-width="1.6"/>
-      </svg>
-      <span class="brand-name">Frame<b>Labs</b></span>
+      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;">
     </a>
     <nav class="nav-links" id="navLinks">
       <a data-page="home" href="#home">Home</a>
@@ -468,8 +550,7 @@
 
     <div class="hero hero-solo">
       <div class="eyebrow">Open source · stop-motion · Blender-native</div>
-      <h1>Open source stop-motion software<br>made for <span class="accent">Blender</span>.</h1>
-      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
+<h1>Open source stop-motion software<br>made for <span class="blender-color">Blender</span>.</h1>      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
       <div class="hero-ctas">
         <a class="btn btn-primary" href="#home" data-page="home" data-scroll="download">Download FrameLabs</a>
         <a class="btn btn-outline" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">View Source</a>
@@ -1291,7 +1372,7 @@ framelabs
 <footer class="footer">
   <div class="container footer-inner">
     <div>
-      <span class="brand-name">Frame<b>Labs</b></span>
+      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;">
       <div class="footer-fine">Open-source · MIT licensed · Windows / macOS / Linux</div>
     </div>
     <div class="footer-links">
