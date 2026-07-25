@@ -142,56 +142,55 @@
   @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
   /* ---------- animated background blobs ---------- */
- .hero-bg{
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%;
-  height: 900px;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
-}
+  .hero-bg{
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
+  }
   .hero-bg .blob{
     position: absolute;
     border-radius: 50%;
     filter: blur(140px);
     mix-blend-mode: color-burn;
-    opacity: 0.4;
+    opacity: 0.6;
   }
   .hero-bg .blob-1{
     width: 520px; height: 520px;
-    background: #6E3AFF;
+    background: #1FA8C4;
     top: -140px; left: -80px;
-    animation: float1 22s ease-in-out infinite;
+    animation: float1 18s ease-in-out infinite;
   }
   .hero-bg .blob-2{
     width: 480px; height: 480px;
-    background: #2E6BFF;
+    background: #F2914B;
     top: -100px; right: 10%;
-    animation: float2 26s ease-in-out infinite;
+    animation: float2 22s ease-in-out infinite;
   }
   .hero-bg .blob-3{
     width: 560px; height: 560px;
-    background: #F2694B;
+    background: #2E9FC4;
     top: 160px; left: 30%;
-    animation: float3 20s ease-in-out infinite;
+    animation: float3 26s ease-in-out infinite;
   }
   .hero-bg .blob-4{
     width: 520px; height: 520px;
-    background: #2FBF71;
+    background: #F2694B;
     bottom: -220px; right: -60px;
-    animation: float4 24s ease-in-out infinite;
+    animation: float4 20s ease-in-out infinite;
   }
   .hero-bg .blob-5{
-  width: 600px; height: 900px;
-  background: #000000;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  filter: blur(100px);
-  opacity: .5;
-}
+    width: 600px; height: 600px;
+    background: #000000;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.5;
+  }
   @keyframes float1{
   0%   { transform: translate(0, 0) scale(1); }
   25%  { transform: translate(160px, 80px) scale(1.15); }
@@ -514,7 +513,7 @@
   }
 </style>
 </head>
-<body>
+<body style="position:relative;">
 <div class="hero-bg" aria-hidden="true">
   <span class="blob blob-1"></span>
   <span class="blob blob-2"></span>
