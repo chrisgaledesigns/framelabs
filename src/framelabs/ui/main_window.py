@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -25,10 +25,12 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
+from framelabs.project.autosave import has_recoverable_autosave
 from framelabs.project.project import Project
 from framelabs.timeline.onion_skin import OnionSkinSettings
 from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
+from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.inspector_panel import InspectorPanel
@@ -47,6 +49,11 @@ from framelabs.ui.timeline_widget import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Feature 8: "Every: 30 seconds AND after every capture." Lives here
+# (not in autosave_controller.py) because the timer itself lives on the
+# main thread -- see _start_autosave_controller()'s docstring.
+AUTOSAVE_INTERVAL_MS = 30000
 
 
 class MainWindow(QMainWindow):
@@ -88,6 +95,7 @@ class MainWindow(QMainWindow):
         self._start_live_view_controller()
         self._start_onion_skin_controller()
         self._start_playback_controller()
+        self._start_autosave_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
@@ -405,6 +413,71 @@ class MainWindow(QMainWindow):
         self.playback_controller.playback_finished.connect(self._on_playback_finished)
 
         self._playback_thread.start()
+
+    def _start_autosave_controller(self) -> None:
+        """Create the autosave worker thread and wire its signals.
+
+        A SEVENTH separate thread -- see autosave_controller.py's module
+        docstring for why an autosave write shouldn't contend with any of
+        the other six.
+
+        The 30-second periodic timer itself lives on the MAIN thread
+        (self._autosave_timer below), NOT this worker thread -- unlike
+        CameraController.start_scanning()'s timer, this one's callback
+        does no real work of its own (just a None/shutdown check and a
+        signal emit, see _on_autosave_timer_tick()), so there's no "UI
+        Never Blocks" reason to create it on the worker thread, and
+        keeping it on the main thread means it can read self.project
+        directly rather than needing a separately-tracked, cross-thread
+        -synced copy of it (same "carry the Project on the signal itself"
+        reasoning as capture_controller.py's capture_requested).
+        """
+        self._autosave_thread = QThread(self)
+        self.autosave_controller = AutosaveController()
+        self.autosave_controller.moveToThread(self._autosave_thread)
+
+        self.autosave_controller.autosave_succeeded.connect(self._on_autosave_succeeded)
+        self.autosave_controller.autosave_failed.connect(self._on_autosave_failed)
+
+        self._autosave_thread.start()
+
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setInterval(AUTOSAVE_INTERVAL_MS)
+        self._autosave_timer.timeout.connect(self._on_autosave_timer_tick)
+        self._autosave_timer.start()
+
+    def _on_autosave_timer_tick(self) -> None:
+        """Fire one periodic autosave, per Feature 8's "every 30 seconds".
+
+        No-op if no project is open yet -- same guard pattern as
+        _on_capture() and _on_save_project(). Also no-op once shutdown has
+        started, same self._shutting_down guard closeEvent()'s own
+        docstring explains for _refresh_onion_skin() -- without it, a tick
+        landing between "closeEvent sets _shutting_down" and "the autosave
+        thread is actually torn down" would emit onto a worker thread
+        that's already been told to quit.
+        """
+        if self._shutting_down or self.project is None:
+            return
+        self.autosave_controller.autosave_requested.emit(self.project)
+
+    def _on_autosave_succeeded(self, autosave_path: str) -> None:
+        """Log-only. Feature 8: "Autosave should be silent." """
+        logger.info("Autosave written: %s", autosave_path)
+
+    def _on_autosave_failed(self, message: str) -> None:
+        """Log-only, deliberately no dialog.
+
+        Feature 8: "Autosave should be silent... Never interrupt
+        capture." Unlike ProjectController's save_failed (an explicit
+        Ctrl+S the user is actively waiting on), a failed background
+        .autosave/ snapshot must not interrupt the user -- project.ffproj
+        itself is kept current independently by capture_service's own
+        synchronous save after every capture/delete/replace/duplicate/
+        notes/marker change, so a failed autosave snapshot never puts
+        real project data at risk on its own.
+        """
+        logger.error("Autosave failed: %s", message)
 
     def _wire_playback_controls(self) -> None:
         """Connect the PlaybackControls widget to real playback state.
@@ -1207,7 +1280,48 @@ class MainWindow(QMainWindow):
         chosen = QFileDialog.getExistingDirectory(self, "Open Project")
         if not chosen:
             return
-        self.project_controller.load_requested.emit(Path(chosen))
+        project_path = Path(chosen)
+
+        # Feature 8 crash recovery. has_recoverable_autosave() is just
+        # two stat() calls, cheap enough to run synchronously here rather
+        # than round-tripping to a worker thread first.
+        if has_recoverable_autosave(project_path):
+            self._show_recovery_dialog(project_path)
+        else:
+            self.project_controller.load_requested.emit(project_path)
+
+    def _show_recovery_dialog(self, project_path: Path) -> None:
+        """Show Feature 8's "Recovered Project Found" dialog.
+
+        has_recoverable_autosave() already filtered out the common case
+        (an autosave folder existing but not newer than project.ffproj),
+        so reaching this dialog means the app didn't exit cleanly the
+        last time this project was open. Restore loads from the newest
+        .autosave/ snapshot instead of project.ffproj; Discard proceeds
+        with the normal load, exactly as if no autosave existed --
+        neither choice deletes anything, per the Handbook's "if there is
+        uncertainty, preserve the data."
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Recovered Project Found")
+        box.setText("Recovered Project Found")
+        box.setInformativeText(
+            "FrameLabs found a more recent autosave for this project than "
+            "its last saved file. This usually means the app didn't close "
+            "properly last time.\n\nRestore the autosave, or discard it "
+            "and open the last saved version instead?"
+        )
+        restore_button = box.addButton("Restore", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Discard", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+
+        if box.clickedButton() is restore_button:
+            logger.info("Restoring project from autosave: %s", project_path)
+            self.project_controller.restore_requested.emit(project_path)
+        else:
+            logger.info("Discarding autosave, opening saved project: %s", project_path)
+            self.project_controller.load_requested.emit(project_path)
 
     def _on_load_succeeded(self, project: Project, missing_files: list) -> None:
         """React to a successful load.
@@ -1352,6 +1466,12 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
         self._refresh_frame_action_bar()
+        # Feature 8: "after every capture." project.ffproj itself is
+        # already current (capture_service.capture_frame() saves it
+        # synchronously) -- this writes the separate .autosave/ snapshot
+        # on top of that, per autosave_controller.py's module docstring.
+        if self.project is not None:
+            self.autosave_controller.autosave_requested.emit(self.project)
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.
@@ -1418,7 +1538,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all six worker threads down cleanly before closing.
+        """Shut all seven worker threads down cleanly before closing.
 
         Sets self._shutting_down = True FIRST, before touching any thread.
         This closes a real race: PlaybackController.playhead_advanced is a
@@ -1471,5 +1591,16 @@ class MainWindow(QMainWindow):
         self._playback_thread.finished.connect(self.playback_controller.deleteLater)
         self._playback_thread.quit()
         self._playback_thread.wait(2000)
+
+        # Stop the timer BEFORE quitting the autosave thread, not after --
+        # otherwise a tick landing in that gap could still emit onto a
+        # worker thread that's already been told to quit. (The
+        # self._shutting_down guard in _on_autosave_timer_tick() is a
+        # second, independent layer against the same race, not a
+        # substitute for stopping the timer here.)
+        self._autosave_timer.stop()
+        self._autosave_thread.finished.connect(self.autosave_controller.deleteLater)
+        self._autosave_thread.quit()
+        self._autosave_thread.wait(2000)
 
         super().closeEvent(event)
