@@ -1,28 +1,39 @@
 """Project Browser panel widget — backlog item #3.
 
-Real per-project navigation panel, following the Project Vision PDF's Main
-Window Layout wireframe (Frames / Audio / References / Overlays / Notes /
-Exports / Plugins). Frames (thumbnail grid), Notes (frames with real note
-text, Feature 5), and Exports (real disk scan of exports/) were the first
-three sections built, since they had real data sources from day one.
+Real per-project navigation panel: Frames grid / Audio / References /
+Overlays / Notes / Exports, following the Project Vision PDF's Main
+Window Layout wireframe. Plugins is still withheld -- no project-level
+data model or folder for it yet, so it isn't shown here at all (adding a
+placeholder entry with no real behavior behind it was deliberately
+skipped per Chris's explicit choice).
 
-Audio, References, and Overlays are now real too, backed by
-Project.audio/references/overlays (schema v3) and project/asset_service.py.
-All three are structurally identical (one list attribute, one matching
-subfolder), so they share one generic build/signal implementation below
-rather than three near-copies, the same reasoning project/asset_service.py
-itself uses.
+Every section header is a real clickable accordion toggle (_SectionHeader
+below), not just a label -- clicking it expands/collapses that section's
+content, per Chris's explicit feedback that six always-expanded sections
+stacked in the narrow side splitter looked cluttered. Only Frames starts
+expanded when a project opens; every other section starts collapsed,
+also per Chris's explicit choice -- Frames is the one section almost
+always relevant, the rest are opened on demand. Collapse state persists
+across set_project() calls within the same widget instance (switching
+projects doesn't reset a section a user deliberately expanded), and is
+NOT saved anywhere (a fresh ProjectBrowserWidget always starts with only
+Frames expanded).
 
 Frames renders as a real thumbnail grid (QListWidget in IconMode), not a
 text list, per Chris's explicit choice after seeing the first version --
 this is why Frames uses a different widget type than the text-list
-sections below it, rather than one shared tree. Notes, Exports, and now
-Audio/References/Overlays stay as simple text lists: none of them benefit
-from a thumbnail-sized icon (a filename doesn't, and audio files have no
-meaningful thumbnail at all).
+sections below it, rather than one shared tree. Notes, Exports, and
+Audio/References/Overlays stay as simple text lists: none of them
+benefit from a thumbnail-sized icon (a filename doesn't, and audio files
+have no meaningful thumbnail at all).
 
-Like TimelineWidget and InspectorPanel, this widget holds no Project of its
-own -- MainWindow calls set_project() whenever the underlying project
+Audio, References, and Overlays are structurally identical (one list
+attribute on Project, one matching subfolder), so they share one generic
+build/signal implementation, the same reasoning project/asset_service.py
+itself uses.
+
+Like TimelineWidget and InspectorPanel, this widget holds no Project of
+its own -- MainWindow calls set_project() whenever the underlying project
 changes.
 
 Each section also supports right-click actions, not just browsing --
@@ -78,6 +89,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -111,14 +123,56 @@ FRAME_TILE_SIZE = 72
 # names directly, so getattr(project, kind) always resolves correctly.
 _ASSET_KINDS = ("audio", "references", "overlays")
 
+# Every collapsible section, in display order top to bottom. Matches the
+# keys used in _section_headers/_section_content below.
+_SECTION_KEYS = ("frames", "audio", "references", "overlays", "notes", "exports")
+
+# Only Frames starts expanded -- see module docstring for why.
+_INITIALLY_EXPANDED = {"frames"}
+
+
+class _SectionHeader(QPushButton):
+    """A clickable, collapsible section header showing an expand/collapse
+    chevron next to its title.
+
+    A real QPushButton (flat, borderless, checkable) rather than a plain
+    QLabel, so clicking anywhere on the header toggles it -- checked
+    state IS the expanded/collapsed state, read via isChecked().
+    """
+
+    def __init__(self, title: str) -> None:
+        """Build the header, initially collapsed. Caller sets the real
+        initial state via set_expanded() afterward."""
+        super().__init__()
+        self._title = title
+        self.setCheckable(True)
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            "QPushButton { text-align: left; font-weight: bold; "
+            "border: none; padding: 4px 2px; }"
+        )
+        self.toggled.connect(self._update_text)
+        self._update_text()
+
+    def _update_text(self) -> None:
+        """Redraw the label with the chevron matching the current state."""
+        chevron = "\u25be" if self.isChecked() else "\u25b8"
+        self.setText(f"{chevron} {self._title}")
+
+    def set_expanded(self, expanded: bool) -> None:
+        """Set expanded/collapsed state without requiring a real click."""
+        self.setChecked(expanded)
+
 
 class ProjectBrowserWidget(QWidget):
     """Real per-project navigation panel: Frames grid / Audio / References
-    / Overlays / Notes / Exports.
+    / Overlays / Notes / Exports, each a collapsible accordion section.
 
     See module docstring for why Frames alone uses a thumbnail grid rather
-    than a text list, and why Audio/References/Overlays share one generic
-    implementation instead of three near-copies.
+    than a text list, why Audio/References/Overlays share one generic
+    implementation instead of three near-copies, and why sections are
+    collapsible with only Frames expanded by default.
     """
 
     # Raw index into Project.frames / Timeline.frames, exactly matching
@@ -171,7 +225,7 @@ class ProjectBrowserWidget(QWidget):
         self._no_project_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._no_project_label)
 
-        self._frames_header = self._make_header("Frames")
+        self._frames_header = _SectionHeader("Frames")
         layout.addWidget(self._frames_header)
         self._frames_grid = QListWidget()
         self._frames_grid.setViewMode(QListWidget.ViewMode.IconMode)
@@ -192,10 +246,10 @@ class ProjectBrowserWidget(QWidget):
         # generically since all three are structurally identical. Stored
         # in a dict keyed by kind so the generic handlers below can look
         # up "which list, which signals" from a single kind string.
-        self._asset_headers: dict[str, QLabel] = {}
+        self._asset_headers: dict[str, _SectionHeader] = {}
         self._asset_lists: dict[str, QListWidget] = {}
         for kind in _ASSET_KINDS:
-            header = self._make_header(kind.capitalize())
+            header = _SectionHeader(kind.capitalize())
             layout.addWidget(header)
             self._asset_headers[kind] = header
 
@@ -207,7 +261,7 @@ class ProjectBrowserWidget(QWidget):
             layout.addWidget(list_widget, 1)
             self._asset_lists[kind] = list_widget
 
-        self._notes_header = self._make_header("Notes")
+        self._notes_header = _SectionHeader("Notes")
         layout.addWidget(self._notes_header)
         self._notes_list = QListWidget()
         self._notes_list.itemDoubleClicked.connect(self._on_indexed_item_double_clicked)
@@ -217,7 +271,7 @@ class ProjectBrowserWidget(QWidget):
         )
         layout.addWidget(self._notes_list, 1)
 
-        self._exports_header = self._make_header("Exports")
+        self._exports_header = _SectionHeader("Exports")
         layout.addWidget(self._exports_header)
         self._exports_list = QListWidget()
         self._exports_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -226,31 +280,40 @@ class ProjectBrowserWidget(QWidget):
         )
         layout.addWidget(self._exports_list, 1)
 
+        # Unified key -> (header, content) mapping, used by the generic
+        # collapse/expand logic and the "no project" show/hide toggle,
+        # rather than repeating six near-identical if/elif blocks.
+        self._section_headers: dict[str, _SectionHeader] = {
+            "frames": self._frames_header,
+            "audio": self._asset_headers["audio"],
+            "references": self._asset_headers["references"],
+            "overlays": self._asset_headers["overlays"],
+            "notes": self._notes_header,
+            "exports": self._exports_header,
+        }
+        self._section_content: dict[str, QWidget] = {
+            "frames": self._frames_grid,
+            "audio": self._asset_lists["audio"],
+            "references": self._asset_lists["references"],
+            "overlays": self._asset_lists["overlays"],
+            "notes": self._notes_list,
+            "exports": self._exports_list,
+        }
+
+        for key in _SECTION_KEYS:
+            header = self._section_headers[key]
+            header.set_expanded(key in _INITIALLY_EXPANDED)
+            header.toggled.connect(partial(self._on_section_toggled, key))
+
         self._show_no_project()
 
-    @staticmethod
-    def _make_header(text: str) -> QLabel:
-        """Build a small bold section header label."""
-        label = QLabel(text)
-        label.setStyleSheet("font-weight: bold;")
-        return label
-
     def _section_widgets(self) -> tuple[QWidget, ...]:
-        """All section headers/lists, for the show/hide-together toggle
-        between the "No project open" state and a real project's sections.
-        """
-        widgets: tuple[QWidget, ...] = (
-            self._frames_header,
-            self._frames_grid,
-        )
-        for kind in _ASSET_KINDS:
-            widgets += (self._asset_headers[kind], self._asset_lists[kind])
-        widgets += (
-            self._notes_header,
-            self._notes_list,
-            self._exports_header,
-            self._exports_list,
-        )
+        """All section headers/content widgets, for the show/hide-together
+        toggle between the "No project open" state and a real project's
+        sections."""
+        widgets: tuple[QWidget, ...] = ()
+        for key in _SECTION_KEYS:
+            widgets += (self._section_headers[key], self._section_content[key])
         return widgets
 
     def _show_no_project(self) -> None:
@@ -269,10 +332,14 @@ class ProjectBrowserWidget(QWidget):
 
         Call this from the same places MainWindow calls
         _refresh_timeline_widget() -- new project, opened project, capture,
-        delete, replace, duplicate, undo, redo, and now any asset add/
-        remove -- so the panel never shows stale data. Safe to call with
+        delete, replace, duplicate, undo, redo, and any asset add/remove --
+        so the panel never shows stale data. Safe to call with
         `project=None` (no active project yet), which shows a single
-        placeholder row instead of every empty section.
+        placeholder row instead of every section.
+
+        Each section's collapsed/expanded state is preserved across this
+        call -- switching projects (or refreshing the current one) doesn't
+        reset a section the user deliberately expanded or collapsed.
         """
         self._frames_grid.clear()
         for kind in _ASSET_KINDS:
@@ -285,14 +352,29 @@ class ProjectBrowserWidget(QWidget):
             return
 
         self._no_project_label.setVisible(False)
-        for widget in self._section_widgets():
-            widget.setVisible(True)
+        for key in _SECTION_KEYS:
+            self._section_headers[key].setVisible(True)
+            self._section_content[key].setVisible(
+                self._section_headers[key].isChecked()
+            )
 
         self._build_frames_grid(project)
         for kind in _ASSET_KINDS:
             self._build_asset_list(kind, project)
         self._build_notes_list(project)
         self._build_exports_list(project)
+
+    def _on_section_toggled(self, key: str, expanded: bool) -> None:
+        """Show/hide a section's content when its header is clicked.
+
+        No-op while no project is open -- all sections are hidden
+        together via _show_no_project() regardless of collapse state, so
+        toggling a header before a project loads shouldn't make content
+        visible against the placeholder state.
+        """
+        if self._no_project_label.isVisible():
+            return
+        self._section_content[key].setVisible(expanded)
 
     @staticmethod
     def _ordered_frames(project: Project) -> list:
