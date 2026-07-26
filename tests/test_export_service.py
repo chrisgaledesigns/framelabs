@@ -122,6 +122,25 @@ def test_export_gif_writes_looping_animation(tmp_path):
         assert gif.info.get("loop") == 0
 
 
+def test_export_gif_wraps_non_oserror_frame_failure(tmp_path, monkeypatch):
+    """A frame-read failure that isn't an OSError (e.g. Pillow raising
+    something else on a corrupt/truncated image) must still come out as
+    ExportServiceError, not escape uncaught -- see export_controller.py's
+    matching defense-in-depth fix for why an unwrapped exception here is
+    dangerous (it silently kills the worker thread's caller)."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+
+    def _raise(*args, **kwargs):
+        raise ValueError("simulated non-OSError Pillow failure")
+
+    monkeypatch.setattr("framelabs.export.export_service.Image.open", _raise)
+
+    with pytest.raises(ExportServiceError):
+        export_gif(project, event_bus, "basename")
+
+
 def test_export_all_shares_one_basename(tmp_path):
     project = _make_project(tmp_path)
     _add_frame(project, 1)

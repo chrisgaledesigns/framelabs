@@ -87,6 +87,34 @@ def test_handle_export_requested_no_frames_emits_failed(tmp_path):
     succeeded_slot.assert_not_called()
 
 
+def test_handle_export_requested_unexpected_error_still_emits_failed(
+    tmp_path, monkeypatch
+):
+    """An exception that ISN'T ExportServiceError (i.e. something
+    export_service failed to wrap) must still emit export_failed rather
+    than escaping _handle_export_requested silently. Previously this
+    would leave neither signal firing -- exactly the observed bug where
+    the Export menu item stayed disabled forever with no dialog, because
+    MainWindow had no way to learn the export had ended."""
+    controller = ExportController(EventBus())
+    project = _make_project(tmp_path)
+
+    def _raise(*args, **kwargs):
+        raise ValueError("simulated unwrapped error")
+
+    monkeypatch.setattr("framelabs.export.export_service.export_video", _raise)
+
+    succeeded_slot = MagicMock()
+    failed_slot = MagicMock()
+    controller.export_succeeded.connect(succeeded_slot)
+    controller.export_failed.connect(failed_slot)
+
+    controller._handle_export_requested(project)  # should not raise
+
+    failed_slot.assert_called_once()
+    succeeded_slot.assert_not_called()
+
+
 def test_handle_export_requested_partial_failure_still_emits_succeeded(
     tmp_path, monkeypatch
 ):
