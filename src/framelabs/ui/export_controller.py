@@ -64,6 +64,17 @@ class ExportController(QObject):
         except ExportServiceError as exc:
             logger.error("Export failed: %s", exc)
             self.export_failed.emit(str(exc))
+        except Exception as exc:
+            # Defense in depth: export_all()/export_service's individual
+            # export_*() functions are expected to wrap every failure as
+            # ExportServiceError, but if anything unexpected still slips
+            # through, it must not vanish silently on this worker thread
+            # -- that would leave export_succeeded/export_failed never
+            # firing, which permanently disables the Export menu item
+            # with no dialog shown, since MainWindow has no other way to
+            # find out the export ended.
+            logger.exception("Export failed with an unexpected error")
+            self.export_failed.emit(str(exc))
         else:
             logger.info(
                 "Export finished: %d succeeded, %d failed",
