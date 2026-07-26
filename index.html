@@ -9,18 +9,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:        #12151C;
-    --panel:     #1A1F29;
-    --panel-2:   #1F2531;
-    --border:    #2A3140;
+    --bg:        #00080F;
+    --panel:     #0D1821;
+    --panel-2:   #14202A;
+    --border:    #1F2D39;
     --text:      #EDEFF4;
-    --muted:     #8A93A6;
-    --teal:      #4FD8C4;
-    --teal-dim:  #2C6E64;
-    --amber:     #F2B84B;
-    --amber-dim: #6B5426;
-    --slate:     #38414F;
-    --slate-line:#2A3140;
+    --muted:     #C3CAD9;
+    --teal:      #00BC90;
+    --teal-dim:  #005949;
+    --amber:     #E4D100;
+    --amber-dim: #575409;
+    --slate:     #253541;
+    --slate-line:#1F2D39;
+    --on-teal:   #00060A;
+    --on-amber:  #0A0C08;
     --disp: 'Space Grotesk', 'Arial Narrow', Arial, sans-serif;
     --body: 'Inter', 'Helvetica Neue', Arial, sans-serif;
     --mono: 'IBM Plex Mono', 'Liberation Mono', 'DejaVu Sans Mono', monospace;
@@ -35,6 +37,7 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
+    position: relative;
   }
   a{ color:inherit; text-decoration:none; }
   ul{ list-style:none; }
@@ -48,13 +51,13 @@
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 2.5px;
-    color: var(--teal);
+    color: var(--amber);
     text-transform: uppercase;
     margin-bottom: 14px;
     display:flex; align-items:center; gap:10px;
   }
   .eyebrow::before{
-    content:""; width:16px; height:1px; background:var(--teal); display:inline-block;
+    content:""; width:16px; height:1px; background:var(--amber); display:inline-block;
   }
   h1,h2,h3{ font-family: var(--disp); font-weight:700; letter-spacing:-0.02em; }
   h2{ font-size: 32px; margin-bottom: 14px; }
@@ -70,8 +73,8 @@
     transition: transform .15s ease, border-color .15s ease, background .15s ease;
     white-space:nowrap;
   }
-  .btn-primary{ background: var(--teal); color:#08211D; }
-  .btn-primary:hover{ transform: translateY(-1px); background:#63e0cf; }
+  .btn-primary{ background: var(--teal); color:var(--on-teal); }
+  .btn-primary:hover{ transform: translateY(-1px); background:#42CAAC; }
   .btn-outline{ background:transparent; border-color: var(--border); color: var(--text); }
   .btn-outline:hover{ border-color: var(--teal); color: var(--teal); }
   .btn-sm{ padding:8px 14px; font-size:12.5px; border-radius:6px; }
@@ -89,7 +92,7 @@
   /* ---------- nav ---------- */
   .nav{
     position:sticky; top:0; z-index:100;
-    background: rgba(18,21,28,.86); backdrop-filter: blur(10px);
+    background: rgba(18,21,28,.25); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
   }
   .nav-inner{
@@ -116,6 +119,7 @@
   /* ---------- routing ---------- */
   .site-page{ display:none; }
   .site-page.active{ display:block; animation: fadein .35s ease; }
+  .site-page{ position: relative; z-index: 1; }
   @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
   /* ================= HOME ================= */
@@ -125,6 +129,7 @@
   .hero.hero-solo{ max-width:720px; margin:0 auto; text-align:center; }
   .hero h1{ font-size: 50px; line-height:1.1; margin-bottom:20px; }
   .hero h1 .accent{ color: var(--teal); }
+  .hero h1 .blender-color{ color: #E87D0D; }
   .hero p.lead{ color: var(--muted); font-size:16.5px; max-width:560px; margin:0 auto 32px auto; line-height:1.65; }
   .hero-ctas{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:36px; justify-content:center; }
   .hero-meta{
@@ -137,6 +142,85 @@
     animation: blink 1.6s infinite;
   }
   @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  /* ---------- animated background blobs ---------- */
+  .hero-bg{
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
+  }
+  .hero-bg .blob{
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(140px);
+    mix-blend-mode: color-burn;
+    opacity: 0.6;
+  }
+  .hero-bg .blob-1{
+    width: 520px; height: 520px;
+    background: #00BC90;
+    top: -140px; left: -80px;
+    animation: float1 18s ease-in-out infinite;
+  }
+  .hero-bg .blob-2{
+    width: 480px; height: 480px;
+    background: #E4D100;
+    top: -100px; right: 10%;
+    animation: float2 22s ease-in-out infinite;
+  }
+  .hero-bg .blob-3{
+    width: 560px; height: 560px;
+    background: #00806B;
+    top: 160px; left: 30%;
+    animation: float3 26s ease-in-out infinite;
+  }
+  .hero-bg .blob-4{
+    width: 520px; height: 520px;
+    background: #A38F00;
+    bottom: -220px; right: -60px;
+    animation: float4 20s ease-in-out infinite;
+  }
+  .hero-bg .blob-5{
+    width: 600px; height: 600px;
+    background: #000000;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.5;
+  }
+  @keyframes float1{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(160px, 80px) scale(1.15); }
+  50%  { transform: translate(60px, 180px) scale(0.95); }
+  75%  { transform: translate(-100px, 60px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float2{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-140px, 100px) scale(1.1); }
+  50%  { transform: translate(-60px, -80px) scale(1.2); }
+  75%  { transform: translate(100px, -40px) scale(0.9); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float3{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(120px, -140px) scale(1.2); }
+  50%  { transform: translate(-80px, -60px) scale(0.9); }
+  75%  { transform: translate(-140px, 100px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes float4{
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-100px, -120px) scale(1.1); }
+  50%  { transform: translate(140px, -60px) scale(1.15); }
+  75%  { transform: translate(60px, 120px) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
 
   /* small camera rig, reused inside the main-window mockup below */
   .rig{ position:absolute; left:50%; bottom:34px; transform:translateX(-50%); }
@@ -181,7 +265,7 @@
   .mockup-grid .m-browser{ border-right:1px solid var(--border); padding:16px 14px; font-size:11.5px; color:var(--muted); }
   .mockup-grid .m-browser div{ margin-bottom:9px; padding-left:14px; position:relative; }
   .mockup-grid .m-browser div::before{ content:"›"; position:absolute; left:0; color:var(--teal); }
-  .mockup-grid .m-live{ position:relative; background: radial-gradient(circle at 50% 40%, #202836, #171B24 75%); display:flex; align-items:center; justify-content:center; }
+  .mockup-grid .m-live{ position:relative; background: radial-gradient(circle at 50% 40%, #0B141D, #000509 75%); display:flex; align-items:center; justify-content:center; }
   .mockup-grid .m-live .rig .body{ width:70px; height:56px; }
   .mockup-grid .m-live .rig .head{ width:38px; height:32px; }
   .mockup-grid .m-live .rig .arm{ height:80px; }
@@ -203,8 +287,8 @@
   .rt-body p{ color:var(--muted); font-size:13px; max-width:520px; }
   .rt-track{ display:flex; gap:6px; margin-top:14px; }
   .rt-node{ width:20px; height:20px; border-radius:50%; border:2px solid var(--slate); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; color:var(--muted); }
-  .rt-node.done{ background:var(--teal); border-color:var(--teal); color:#08211D; }
-  .rt-node.mid{ background:var(--amber); border-color:var(--amber); color:#3A2A00; }
+  .rt-node.done{ background:var(--teal); border-color:var(--teal); color:var(--on-teal); }
+  .rt-node.mid{ background:var(--amber); border-color:var(--amber); color:var(--on-amber); }
 
   /* download */
   .download-panel{
@@ -217,7 +301,7 @@
   .os-card .os-name{ font-weight:600; font-size:14px; margin-bottom:4px; }
   .os-card .os-note{ font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:14px; display:block; }
   .code-block{
-    background:#0D1015; border:1px solid var(--border); border-radius:9px;
+    background:#050E16; border:1px solid var(--border); border-radius:9px;
     padding:18px 20px; font-family:var(--mono); font-size:12.5px; color:var(--teal);
     line-height:2; overflow-x:auto;
   }
@@ -241,7 +325,7 @@
 
   .feature-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; align-items:start; }
   .feature-card{ background: var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 22px; transition:border-color .15s ease; }
-  .feature-card:hover{ border-color:#3A4356; }
+  .feature-card:hover{ border-color:#293945; }
   .feature-card .fc-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; gap:10px; cursor:pointer; user-select:none; }
   .feature-card .fc-num{ font-family:var(--mono); color:var(--muted); font-size:11px; }
   .feature-card h3{ font-size:14.5px; flex:1; }
@@ -254,7 +338,7 @@
   .detail-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:1.5px; color:var(--teal); text-transform:uppercase; margin:14px 0 8px 0; display:block; }
   .detail-label:first-child{ margin-top:0; }
 
-  .flow-box{ background:#0D1015; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-family:var(--mono); font-size:11px; color:var(--text); line-height:1.9; }
+  .flow-box{ background:#050E16; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-family:var(--mono); font-size:11px; color:var(--text); line-height:1.9; }
   .flow-box .arrow{ color:var(--teal); margin:0 5px; }
 
   .crit-list li{ font-size:11.5px; color:var(--text); padding-left:18px; position:relative; margin-bottom:6px; line-height:1.5; }
@@ -286,7 +370,7 @@
   .arch-bus{ text-align:center; font-family:var(--mono); font-size:11px; color:var(--muted); padding:10px 0; border-top:1px dashed var(--slate-line); border-bottom:1px dashed var(--slate-line); margin:18px 0; }
 
   .tree-block{
-    background:#0D1015; border:1px solid var(--border); border-radius:9px; padding:22px 26px;
+    background:#050E16; border:1px solid var(--border); border-radius:9px; padding:22px 26px;
     font-family:var(--mono); font-size:12.5px; color:var(--muted); line-height:1.75; overflow-x:auto;
   }
   .tree-block .d{ color: var(--teal); }
@@ -312,12 +396,12 @@
     display:flex; justify-content:space-between; align-items:flex-end;
     border-bottom: 1px solid var(--border); padding-bottom:22px; margin-bottom:30px; flex-wrap:wrap; gap:16px;
   }
-  .ru-eyebrow{ font-family:var(--mono); font-size:10.5px; letter-spacing:2px; color:var(--teal); text-transform:uppercase; margin-bottom:10px; }
+  .ru-eyebrow{ font-family:var(--mono); font-size:10.5px; letter-spacing:2px; color:var(--amber); text-transform:uppercase; margin-bottom:10px; }
   .ru-h1{ font-family:var(--disp); font-size:32px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; }
   .ru-subtitle{ color:var(--muted); font-size:13.5px; }
   .ru-subtitle b{ color:var(--text); }
-  .ru-meta{ text-align:right; font-family:var(--mono); font-size:10.5px; color:var(--muted); line-height:1.7; }
-  .ru-meta span{ color:var(--text); }
+  .ru-meta{ display:flex; justify-content:space-between; width:100%; margin-top:14px; margin-bottom:10px; font-family:var(--mono); font-size:10.5px; color:var(--muted); line-height:1.7; }
+  .ru-meta b{ color:var(--text); font-weight:600; }
 
   .ru-hero{ display:flex; gap:34px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px 30px; margin-bottom:26px; flex-wrap:wrap; }
   .ru-ring-wrap{ flex:0 0 auto; text-align:center; }
@@ -340,8 +424,8 @@
   .ru-track-nodes{ position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; padding:0 24px; }
   .ru-node{ width:62px; text-align:center; }
   .ru-dot{ width:22px; height:22px; border-radius:50%; margin:12px auto 0 auto; border:3px solid var(--slate); background:var(--bg); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; color:var(--muted); }
-  .ru-dot.done{ background:var(--teal); border-color:var(--teal); color:#08211D; font-weight:700; }
-  .ru-dot.mid{ background:var(--amber); border-color:var(--amber); color:#3A2A00; font-weight:700; }
+  .ru-dot.done{ background:var(--teal); border-color:var(--teal); color:var(--on-teal); font-weight:700; }
+  .ru-dot.mid{ background:var(--amber); border-color:var(--amber); color:var(--on-amber); font-weight:700; }
   .ru-node .n{ margin-top:8px; font-size:9.5px; color:var(--muted); line-height:1.25; }
   .ru-node.active .n{ color:var(--text); }
   .ru-legend{ display:flex; gap:22px; margin-top:6px; padding-top:14px; border-top:1px solid var(--border); font-size:10.5px; color:var(--muted); flex-wrap:wrap; }
@@ -428,24 +512,24 @@
     .ru-trow{ display:block; margin-bottom:14px; }
     .ru-trow .tname, .ru-trow .tval{ width:auto; text-align:left; margin-bottom:4px; display:block; }
     .headerline, .ru-headerline{ display:block!important; }
+    .ru-meta{ flex-wrap:wrap; gap:8px 20px; }
   }
 </style>
 </head>
-<body>
+<body style="position:relative;">
+<div class="hero-bg" aria-hidden="true">
+  <span class="blob blob-1"></span>
+  <span class="blob blob-2"></span>
+  <span class="blob blob-3"></span>
+  <span class="blob blob-4"></span>
+  <span class="blob blob-5"></span>
+</div>
 
 <!-- ============ NAV ============ -->
 <header class="nav" id="siteNav">
   <div class="nav-inner">
     <a class="brand" href="#home" data-page="home">
-      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-        <rect x="1" y="1" width="28" height="28" rx="7" stroke="#4FD8C4" stroke-width="1.6"/>
-        <circle cx="5.5" cy="7" r="1.3" fill="#4FD8C4"/>
-        <circle cx="5.5" cy="23" r="1.3" fill="#4FD8C4"/>
-        <circle cx="24.5" cy="7" r="1.3" fill="#4FD8C4"/>
-        <circle cx="24.5" cy="23" r="1.3" fill="#4FD8C4"/>
-        <circle cx="15" cy="15" r="4.2" fill="none" stroke="#F2B84B" stroke-width="1.6"/>
-      </svg>
-      <span class="brand-name">Frame<b>Labs</b></span>
+      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;">
     </a>
     <nav class="nav-links" id="navLinks">
       <a data-page="home" href="#home">Home</a>
@@ -468,24 +552,23 @@
 
     <div class="hero hero-solo">
       <div class="eyebrow">Open source · stop-motion · Blender-native</div>
-      <h1>Open source stop-motion software<br>made for <span class="accent">Blender</span>.</h1>
-      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
+<h1>Open source stop-motion software<br>made for <span class="blender-color">Blender</span>.</h1>      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
       <div class="hero-ctas">
         <a class="btn btn-primary" href="#home" data-page="home" data-scroll="download">Download FrameLabs</a>
         <a class="btn btn-outline" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">View Source</a>
       </div>
       <div class="hero-meta">
-        <span><span class="rec-dot"></span> Session 14 in progress</span>
-        <span>HEAD <b class="mono">1117d32</b></span>
+        <span><span class="rec-dot"></span> Session 15 in progress</span>
+        <span>HEAD <b class="mono">bccf389</b></span>
         <span>Windows · macOS · Linux</span>
       </div>
     </div>
 
     <div class="stat-rail">
       <div class="stat"><div class="num">14</div><div class="lbl">Features in the spec, tracked one by one</div></div>
-      <div class="stat">274<span class="mono"></span><div class="lbl" style="margin-top:8px;">Automated tests passing right now</div></div>
+      <div class="stat"><div class="num">302</div><div class="lbl">Automated tests passing right now</div></div>
       <div class="stat"><div class="num">3</div><div class="lbl">Platforms: Windows, macOS, Linux</div></div>
-      <div class="stat"><div class="num">MIT</div><div class="lbl">Free and open source, forever</div></div>
+      <div class="stat"><div class="num">GPL-3.0</div><div class="lbl">Free and open source, forever</div></div>
     </div>
 
   </div>
@@ -519,7 +602,7 @@
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v6m0 6v6M3 12h6m6 0h6"/></svg></div>
           <h3>Autosave & Crash Recovery</h3>
-          <p>Silently autosaves after every capture, never interrupting a shot. Crash recovery on restart is next up.</p>
+          <p>Silently autosaves after every capture, never interrupting a shot. Crash-recovery lookup and snapshot pruning are now built and tested — the restart prompt is next up.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></div>
@@ -571,14 +654,14 @@
     <div class="container">
       <div class="roadmap-teaser">
         <svg class="rt-ring" width="90" height="90" viewBox="0 0 150 150">
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#1F2D39" stroke-width="14"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#E4D100" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
           <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">85%</text>
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">BUILD</text>
         </svg>
         <div class="rt-body">
           <h3>Phases 0–6 are closed — Phase 7, the Blender Bridge, is next</h3>
-          <p>274 tests passing, 7 of 10 roadmap phases fully closed. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
+          <p>302 tests passing, 7 of 10 roadmap phases fully closed. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
           <div class="rt-track">
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div>
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node">7</div><div class="rt-node">8</div><div class="rt-node">9</div>
@@ -806,7 +889,7 @@ framelabs
 
         <div class="feature-card">
           <div class="fc-top"><span class="fc-num mono">08</span><h3>Autosave</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
-          <p class="fc-summary">Autosaves silently after every capture. The independent 30-second timer and crash recovery on restart are spec'd but not built yet.</p>
+          <p class="fc-summary">Autosaves silently after every capture. Crash-recovery lookup and snapshot pruning are now built and tested; the independent 30-second timer and the on-restart prompt aren't wired up yet.</p>
           <div class="feature-detail">
             <span class="detail-label">Trigger</span>
             <div class="flow-box">Every 30 seconds<span class="arrow">AND</span>after every capture</div>
@@ -818,7 +901,8 @@ framelabs
             <span class="detail-label">Currently</span>
             <ul class="edge-list">
               <li>After-every-capture autosave is real and wired into the capture pipeline</li>
-              <li>The independent 30-second timer and the "Recovered Project Found — Restore? / Discard?" crash recovery flow don't exist yet</li>
+              <li>Snapshot writing, pruning to the last 20, and crash-recovery lookup (<span class="mono">has_recoverable_autosave</span> / <span class="mono">restore_autosave</span>) are built and tested</li>
+              <li>The independent 30-second timer and the "Recovered Project Found — Restore? / Discard?" dialog itself still aren't wired up</li>
             </ul>
           </div>
         </div>
@@ -1106,18 +1190,19 @@ framelabs
         <h1 class="ru-h1">Live Updates</h1>
         <div class="ru-subtitle">Open-source stop-motion animation app with one-click Blender integration — built by <b>Chris (chrisgaledesigns)</b> with Claude as engineering partner.</div>
       </div>
-      <div class="ru-meta">
-        SESSION <span>14</span> · PUSH <span>1</span><br>
-        HEAD <span>1117d32</span><br>
-        <span>Last updated July 19, 2026</span>
-      </div>
+    </div>
+
+    <div class="ru-meta">
+      <span>SESSION <b>15</b> · PUSH <b>1</b></span>
+      <span>HEAD <b>bccf389</b></span>
+      <span>Last updated July 24, 2026</span>
     </div>
 
     <div class="ru-hero">
       <div class="ru-ring-wrap">
         <svg width="150" height="150" viewBox="0 0 150 150">
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#2A3140" stroke-width="14"/>
-          <circle cx="75" cy="75" r="62" fill="none" stroke="#4FD8C4" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#1F2D39" stroke-width="14"/>
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#E4D100" stroke-width="14" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="58.4" transform="rotate(-90 75 75)"/>
           <text x="75" y="70" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="30" font-weight="700" fill="#EDEFF4">85%</text>
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">OVERALL BUILD</text>
         </svg>
@@ -1125,7 +1210,7 @@ framelabs
       </div>
       <div class="ru-stat-rail">
         <div class="ru-stat"><div class="num">7<span style="color:var(--muted); font-size:16px;">/10</span></div><div class="lbl">Roadmap phases fully closed</div></div>
-        <div class="ru-stat"><div class="num">274</div><div class="lbl">Automated tests, all passing</div></div>
+        <div class="ru-stat"><div class="num">302</div><div class="lbl">Automated tests, all passing</div></div>
         <div class="ru-stat"><div class="num">1</div><div class="lbl">Commits pushed this session</div></div>
         <div class="ru-stat"><div class="num">7<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
       </div>
@@ -1201,24 +1286,26 @@ framelabs
       <div>
         <div class="ru-section-head" style="margin-top:0;">
           <span class="ru-section-num">04</span><span class="ru-section-title">Test Suite Composition</span>
-          <span class="ru-section-sub">274 passing</span>
+          <span class="ru-section-sub">302 passing</span>
         </div>
         <div class="ru-testchart">
           <div class="ru-trow"><span class="tname">test_timeline_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">28</span></div>
           <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:96%"></div></div><span class="tval">27</span></div>
           <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:89%"></div></div><span class="tval">25</span></div>
           <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:86%"></div></div><span class="tval">24</span></div>
+          <div class="ru-trow"><span class="tname">test_project_browser_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:61%"></div></div><span class="tval">17</span></div>
           <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:54%"></div></div><span class="tval">15</span></div>
           <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:50%"></div></div><span class="tval">14</span></div>
+          <div class="ru-trow"><span class="tname">test_autosave.py</span><div class="tbar-wrap"><div class="tbar" style="width:46%"></div></div><span class="tval">13</span></div>
           <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
-          <div class="ru-trow"><span class="tname">test_project_browser_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
+          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
           <div class="ru-trow"><span class="tname">test_undo_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
           <div class="ru-trow"><span class="tname">test_playback_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
           <div class="ru-trow"><span class="tname">test_frame_writer.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
           <div class="ru-trow"><span class="tname">test_config.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
           <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
           <div class="ru-trow"><span class="tname">test_plugin_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:32%"></div></div><span class="tval">9</span></div>
+          <div class="ru-trow"><span class="tname">test_theater_view_dialog.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
           <div class="ru-trow"><span class="tname">test_playback.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
           <div class="ru-trow"><span class="tname">test_metadata.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
           <div class="ru-trow"><span class="tname">test_histogram.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
@@ -1237,21 +1324,21 @@ framelabs
         </div>
         <div class="ru-testchart" style="padding:18px 20px;">
           <div class="ru-commit-list">
-            <div><span class="hash">1117d32</span></div>
-            <div class="msg" style="margin-bottom:8px;">Add Delete Frame keyboard shortcut for Feature 12</div>
-            <div><span class="hash">05c977f</span></div>
-            <div class="msg" style="margin-bottom:8px;">created grid view of the file browser. still debating true workflow of this panel</div>
-            <div><span class="hash">e46692b</span></div>
-            <div class="msg" style="margin-bottom:8px;">Add click-and-drag scrolling to timeline strip</div>
-            <div><span class="hash">53e6cda</span></div>
-            <div class="msg">Fix action bar toggle shifting Live View's size</div>
+            <div><span class="hash">bccf389</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add autosave snapshot module with pruning and crash-recovery lookup (Feature 8)</div>
+            <div><span class="hash">56d63b6</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add Project.audio/references/overlays fields (schema v3)</div>
+            <div><span class="hash">a40b6c0</span></div>
+            <div class="msg" style="margin-bottom:8px;">Make Theater View a movable, resizable window instead of full-screen</div>
+            <div><span class="hash">6aac383</span></div>
+            <div class="msg">Add right-click actions to Project Browser (Frames/Notes/Exports)</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="ru-callout">
-      <b>Feature 12 — Keyboard Shortcuts is closed for real now.</b> Every default reads from <span class="mono">Config</span>'s <span class="mono">keyboard_shortcuts</span> setting through a Qt-free <span class="mono">parse_shortcut()</span> helper instead of being hardcoded, and a fixed <span class="mono">Delete</span> shortcut now deletes the selected frame — wired to the same confirm-and-undo-backed handler the action bar's Delete button and right-click menu already shared, so no new deletion logic was needed. Two other real, tested features landed between sessions too: click-and-drag scrolling on the Timeline strip (<span class="mono">e46692b</span>), and a first grid-view pass at the Project Browser panel (<span class="mono">05c977f</span>) — Chris's own commit message flags that one as still unsettled on workflow, so treat it as in-progress, not finished. Committed as <span class="mono">1117d32</span>. 274/274 tests passing throughout, <span class="mono">black</span>/<span class="mono">isort</span>/<span class="mono">ruff</span> all clean.
+      <b>The Project Browser panel's workflow is decided — right-click actions and a real preview, not just a grid of thumbnails.</b> Frames, Notes, and Exports each got right-click menus (<span class="mono">6aac383</span>): the Frames grid reuses the Timeline strip's exact Delete/Replace/Duplicate/Marker menu with zero new logic, Notes gets Jump to Frame/Edit/Clear, and Exports gets Open File/Open Containing Folder/Delete. Double-clicking a frame now opens Theater View — a full-resolution, read-only preview that deliberately never touches the Timeline's playhead. Chris asked for it as a full-screen dialog first, then explicitly changed course to a movable, resizable window (<span class="mono">a40b6c0</span>). Project also moved to schema v3, adding <span class="mono">audio</span>/<span class="mono">references</span>/<span class="mono">overlays</span> fields Feature 1 was already documented as supporting. And Feature 8 got real backend progress: a new autosave module writes timestamped snapshots, prunes down to the last 20, and can detect and restore a recoverable autosave (<span class="mono">has_recoverable_autosave</span> / <span class="mono">restore_autosave</span>) — tested, but the independent 30-second timer and the actual "Recovered Project Found?" dialog still aren't wired up. Committed as <span class="mono">bccf389</span>. 302/302 tests passing throughout, <span class="mono">black</span>/<span class="mono">isort</span>/<span class="mono">ruff</span> all clean.
     </div>
 
     <div class="ru-two-col" style="margin-top:22px; margin-bottom:60px;">
@@ -1261,8 +1348,8 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean">
-          <li><b style="color:var(--text);">Not yet decided:</b> whether to firm up the Project Browser panel's workflow next, or tackle Autosave (Feature 8) or the DSLR/mirrorless camera backend (Feature 2) instead — ask before assuming</li>
-          <li>Also open, lower priority: crash recovery (Feature 8), and rounding out Plugin Manager with a deactivate/event-bus hook and a plugins UI (Feature 13)</li>
+          <li><b style="color:var(--text);">Not yet decided:</b> whether to wire up Feature 8's remaining piece — the 30-second timer and "Recovered Project Found?" dialog — next, or move on to the DSLR/mirrorless camera backend (Feature 2) — ask before assuming</li>
+          <li>Also open, lower priority: closing Feature 9 (undoable Capture/Project Settings changes), and rounding out Plugin Manager with a deactivate/event-bus hook and a plugins UI (Feature 13)</li>
           <li>Export &amp; Open in Blender remain Phase 7 territory, intentionally deferred</li>
         </ul>
       </div>
@@ -1272,8 +1359,7 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean muted">
-          <li>Project Browser panel — a real tree/grid view exists but the workflow is still being decided</li>
-          <li>Crash recovery — "Recovered Project Found?" flow (Feature 8)</li>
+          <li>Crash recovery UI — the snapshot/pruning/lookup logic is built and tested, but the 30-second timer and the "Recovered Project Found?" dialog itself aren't wired in yet (Feature 8)</li>
           <li>Undoable Capture and Project Settings changes, to fully close Feature 9</li>
           <li>DSLR/mirrorless camera backend (Feature 2)</li>
           <li>Plugin Manager follow-ups — deactivate hook, event-bus access, plugins UI (Feature 13)</li>
@@ -1291,8 +1377,8 @@ framelabs
 <footer class="footer">
   <div class="container footer-inner">
     <div>
-      <span class="brand-name">Frame<b>Labs</b></span>
-      <div class="footer-fine">Open-source · MIT licensed · Windows / macOS / Linux</div>
+      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;">
+      <div class="footer-fine">Open-source · GPL-3.0 licensed · Windows / macOS / Linux</div>
     </div>
     <div class="footer-links">
       <a href="#home" data-page="home">Home</a>
