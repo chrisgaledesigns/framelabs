@@ -96,7 +96,7 @@
     border-bottom: 1px solid var(--border);
   }
   .nav-inner{
-    max-width:1160px; margin:0 auto; padding: 16px 32px;
+    max-width:1160px; margin:0 auto; padding: 16px 24px;
     display:flex; align-items:center; gap:28px;
   }
   .brand{ display:flex; align-items:center; gap:10px; margin-right:auto; }
@@ -230,7 +230,7 @@
 
   /* stat rail (home) */
   .stat-rail{
-    display:grid; grid-template-columns:repeat(4,1fr); gap:0;
+    display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0;
     background: var(--panel); border:1px solid var(--border); border-radius:10px;
     padding: 26px 8px; margin-top:8px;
   }
@@ -240,7 +240,7 @@
   .stat .lbl{ margin-top:8px; font-size:11.5px; color:var(--muted); line-height:1.4; }
 
   /* feature highlight grid (home) */
-  .feat-highlights{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .feat-highlights{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
   .fh-card{
     background: var(--panel); border:1px solid var(--border); border-radius:10px;
     padding:24px; transition: border-color .15s ease, transform .15s ease;
@@ -260,7 +260,7 @@
   }
   .mockup .bar{ display:flex; gap:6px; padding:12px 16px; border-bottom:1px solid var(--border); }
   .mockup .dot{ width:9px; height:9px; border-radius:50%; background: var(--slate); }
-  .mockup-grid{ display:grid; grid-template-columns:150px 1fr 170px; grid-template-rows:38px 1fr 64px; height:380px; }
+  .mockup-grid{ display:grid; grid-template-columns:150px minmax(0,1fr) 170px; grid-template-rows:38px 1fr 64px; height:380px; }
   .mockup-grid .m-menu{ grid-column:1/4; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:18px; padding:0 16px; font-size:11px; color:var(--muted); font-family:var(--mono); }
   .mockup-grid .m-browser{ border-right:1px solid var(--border); padding:16px 14px; font-size:11.5px; color:var(--muted); }
   .mockup-grid .m-browser div{ margin-bottom:9px; padding-left:14px; position:relative; }
@@ -295,7 +295,7 @@
     background: linear-gradient(160deg, var(--panel), var(--panel-2));
     border:1px solid var(--border); border-radius:14px; padding:40px;
   }
-  .os-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin: 26px 0 30px 0; }
+  .os-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin: 26px 0 30px 0; }
   .os-card{ background: var(--bg); border:1px solid var(--border); border-radius:10px; padding:20px; text-align:center; }
   .os-card .os-icon{ font-size:22px; margin-bottom:10px; }
   .os-card .os-name{ font-weight:600; font-size:14px; margin-bottom:4px; }
@@ -323,7 +323,7 @@
   }
   .flagship-callout b{ color:var(--amber); }
 
-  .feature-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; align-items:start; }
+  .feature-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
   .feature-card{ background: var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 22px; transition:border-color .15s ease; }
   .feature-card:hover{ border-color:#293945; }
   .feature-card .fc-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; gap:10px; cursor:pointer; user-select:none; }
@@ -346,17 +346,17 @@
   .edge-list li{ font-size:11.5px; color:var(--muted); padding-left:16px; position:relative; margin-bottom:6px; line-height:1.5; }
   .edge-list li::before{ content:"▸"; position:absolute; left:0; color:var(--amber); }
 
-  .kbd-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .kbd-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .kbd-row{ display:flex; align-items:center; gap:10px; font-size:11.5px; color:var(--muted); }
   .kbd{ font-family:var(--mono); background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; padding:2px 8px; border-radius:5px; font-size:10.5px; color:var(--text); white-space:nowrap; }
 
-  .horizon-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .horizon-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
   .horizon-card{ background: var(--panel); border:1px dashed var(--border); border-radius:10px; padding:20px; }
   .horizon-card h3{ font-size:13.5px; margin-bottom:6px; color: var(--text); }
   .horizon-card p{ color:var(--muted); font-size:12px; line-height:1.6; }
 
   /* ================= DOCS PAGE ================= */
-  .principles-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .principles-grid{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
   .principle{ background:var(--panel); border:1px solid var(--border); border-radius:9px; padding:16px; }
   .principle .p-num{ font-family:var(--mono); color:var(--teal); font-size:11px; margin-bottom:8px; display:block; }
   .principle h4{ font-size:12.5px; margin-bottom:6px; }
@@ -379,16 +379,16 @@
   .event-pills{ display:flex; flex-wrap:wrap; gap:8px; }
   .event-pill{ font-family:var(--mono); font-size:11px; background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; }
 
-  .methods-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .methods-list{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .methods-list li{ font-family:var(--mono); font-size:12.5px; background:var(--panel); border:1px solid var(--border); padding:9px 14px; border-radius:6px; color:var(--teal); }
   .methods-list li span{ color:var(--muted); }
 
-  .fact-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .fact-strip{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
   .fact{ background:var(--panel); border:1px solid var(--border); border-radius:9px; padding:16px 18px; }
   .fact .fnum{ font-family:var(--mono); color:var(--teal); font-size:19px; }
   .fact .flbl{ font-size:11px; color:var(--muted); margin-top:6px; }
 
-  .two-col-docs{ display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+  .two-col-docs{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:28px; }
 
   /* ================= LIVE UPDATES PAGE (namespaced ru-) ================= */
   .ru-wrap{ padding-top:56px; }
@@ -406,7 +406,7 @@
   .ru-hero{ display:flex; gap:34px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px 30px; margin-bottom:26px; flex-wrap:wrap; }
   .ru-ring-wrap{ flex:0 0 auto; text-align:center; }
   .ru-ring-label{ margin-top:8px; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
-  .ru-stat-rail{ flex:1; display:grid; grid-template-columns:repeat(4,1fr); gap:0; min-width:280px; }
+  .ru-stat-rail{ flex:1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; min-width:280px; }
   .ru-stat{ padding:0 18px; border-left:1px solid var(--border); }
   .ru-stat:first-child{ border-left:none; padding-left:0; }
   .ru-stat .num{ font-family:var(--mono); font-size:26px; font-weight:700; color:var(--teal); line-height:1; }
@@ -432,7 +432,7 @@
   .ru-sw{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
   .ru-sw.done{ background:var(--teal); } .ru-sw.mid{ background:var(--amber); } .ru-sw.not{ background:var(--slate); }
 
-  .ru-phase-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .ru-phase-grid{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
   .ru-phase-card{ background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
   .ru-phase-card .top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; gap:8px; }
   .ru-phase-card .name{ font-size:12.5px; font-weight:700; }
@@ -447,7 +447,7 @@
   .ru-tag.mid{ background:var(--amber-dim); color:var(--amber); }
   .ru-tag.not{ background:var(--panel-2); color:var(--muted); border:1px solid var(--border); }
 
-  .ru-feat-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px 14px; }
+  .ru-feat-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 14px; }
   .ru-feat{ display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:7px; padding:9px 12px; }
   .ru-feat .fnum{ font-family:var(--mono); font-size:10px; color:var(--muted); width:16px; }
   .ru-feat .fname{ flex:1; font-size:11.5px; }
@@ -466,7 +466,7 @@
   .ru-callout{ background:var(--panel-2); border-left:3px solid var(--teal); border-radius:0 8px 8px 0; padding:16px 20px; margin-top:22px; font-size:11.5px; color:var(--text); line-height:1.6; }
   .ru-callout b{ color:var(--teal); }
 
-  .ru-two-col{ display:grid; grid-template-columns:1.15fr .85fr; gap:20px; align-items:start; }
+  .ru-two-col{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr); gap:20px; align-items:start; }
 
   .ru-clean li{ position:relative; padding-left:16px; margin-bottom:8px; font-size:11.5px; line-height:1.5; color:var(--text); }
   .ru-clean li::before{ content:"›"; position:absolute; left:0; color:var(--teal); font-weight:700; }
@@ -490,32 +490,15 @@
 
 /* ChatGPT mobile fixes */
     .container{padding:0 16px;}
-    .nav-inner{padding:12px 16px;justify-content:space-between;gap:0;}
+    .nav-inner{padding:12px 16px;justify-content:space-between;column-gap:12px;row-gap:0;}
     .header-logo{height:32px !important;width:auto;}
     .nav-toggle{width:42px;height:42px;flex-shrink:0;display:inline-flex!important;align-items:center;justify-content:center;}
-    .fact-strip{grid-template-columns:1fr;}
+    .fact-strip{grid-template-columns:minmax(0,1fr);}
     .mockup{overflow-x:auto;}
-
-    /* Update the navigation wrapper to handle mobile spacing */
-.nav-inner {
-  padding: 12px 20px; /* Reduces excessive desktop padding */
-  justify-content: space-between; /* Pushes logo and hamburger button to edges */
-  gap: 12px;
-}
 
 /* Shrink the logo slightly so it does not crowd small mobile displays */
 .brand img.header-logo {
   height: 36px !important; /* Drops from 48px to 36px on mobile viewports */
-}
-
-/* Hide the wide desktop navigation links entirely */
-.nav-links {
-  display: none !important; /* Prevents desktop links from crowding the line */
-}
-
-/* Hide the large download CTA button on small headers if necessary, or let it fit */
-.nav-inner .btn-primary {
-  display: none; /* Hiding this frees up space for a clean mobile header */
 }
 
 /* Reveal your built-in mobile menu toggle icon */
@@ -525,17 +508,73 @@
   justify-content: center;
 }
 
-    .feat-highlights, .horizon-grid, .os-grid{ grid-template-columns:repeat(2,1fr); }
-    .mockup-grid{ grid-template-columns:120px 1fr 150px; }
-    .stat-rail, .ru-stat-rail{ grid-template-columns:repeat(2,1fr); }
+    .feat-highlights, .horizon-grid, .os-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .mockup-grid{ grid-template-columns:120px minmax(0,1fr) 150px; }
+    .stat-rail, .ru-stat-rail{ grid-template-columns:repeat(2,minmax(0,1fr)); }
     .stat{ border-left:none!important; border-top:1px solid var(--border); padding:16px 0 0 0!important; margin-top:12px; }
     .stat:nth-child(1),.stat:nth-child(2){ border-top:none!important; margin-top:0; }
-    .principles-grid, .feature-grid, .two-col-docs, .ru-two-col{ grid-template-columns:1fr; }
-    .nav-links{ display:none; }
+    .principles-grid, .feature-grid, .two-col-docs, .ru-two-col{ grid-template-columns:minmax(0,1fr); }
+    .ru-roadmap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .ru-track-row{ min-width:700px; }
+
+    /* On a ~390px-wide screen, the desktop blob sizes (480-600px) and the
+       centered black blob-5 completely blanket the viewport and overlap
+       each other almost entirely, so color-burn blending muddies
+       everything into a flat dark green. Shrink and re-space them so
+       each color stays visually distinct, and drop the black blob
+       (it's a subtle desktop vignette; at this scale it just darkens
+       the whole screen). Animation travel distances are scaled down
+       to match so blobs don't sweep across each other mid-animation. */
+    /* On a ~390px-wide screen, the desktop blob sizes (480-600px) and the
+       centered black blob-5 completely blanket the viewport and overlap
+       each other almost entirely, so color-burn blending muddies
+       everything into a flat dark green. Scale blob size fluidly with
+       viewport width (clamp) instead of a single fixed small size, so
+       phones get small, well-separated blobs while tablets still get
+       enough coverage to not look empty/dark. */
+    .hero-bg .blob-1{ width:clamp(220px, 48vw, 520px); height:clamp(220px, 48vw, 520px); top:-60px; left:-70px; animation-name: float1-sm; opacity:.75; }
+    .hero-bg .blob-2{ width:clamp(200px, 44vw, 480px); height:clamp(200px, 44vw, 480px); top:-40px; right:-40px; animation-name: float2-sm; opacity:.75; }
+    .hero-bg .blob-3{ width:clamp(240px, 52vw, 560px); height:clamp(240px, 52vw, 560px); top:280px; left:40%; animation-name: float3-sm; opacity:.75; }
+    .hero-bg .blob-4{ width:clamp(220px, 48vw, 520px); height:clamp(220px, 48vw, 520px); bottom:-90px; right:-60px; animation-name: float4-sm; opacity:.75; }
+    .hero-bg .blob-5{ width:clamp(0px, 40vw, 380px); height:clamp(0px, 40vw, 380px); opacity:.3; }
+    @keyframes float1-sm{
+      0%   { transform: translate(0, 0) scale(1); }
+      25%  { transform: translate(50px, 25px) scale(1.15); }
+      50%  { transform: translate(20px, 55px) scale(0.95); }
+      75%  { transform: translate(-30px, 20px) scale(1.1); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+    @keyframes float2-sm{
+      0%   { transform: translate(0, 0) scale(1); }
+      25%  { transform: translate(-45px, 30px) scale(1.1); }
+      50%  { transform: translate(-20px, -25px) scale(1.2); }
+      75%  { transform: translate(30px, -15px) scale(0.9); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+    @keyframes float3-sm{
+      0%   { transform: translate(0, 0) scale(1); }
+      25%  { transform: translate(35px, -45px) scale(1.2); }
+      50%  { transform: translate(-25px, -20px) scale(0.9); }
+      75%  { transform: translate(-45px, 30px) scale(1.1); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+    @keyframes float4-sm{
+      0%   { transform: translate(0, 0) scale(1); }
+      25%  { transform: translate(-30px, -35px) scale(1.1); }
+      50%  { transform: translate(45px, -20px) scale(1.15); }
+      75%  { transform: translate(20px, 35px) scale(0.95); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+    .nav-inner{ flex-wrap:wrap; }
     .nav-toggle{ display:block; }
+    .nav-links{
+      order:10; flex-basis:100%; display:flex; flex-direction:column; align-items:flex-start;
+      max-height:0; overflow:hidden; gap:0; padding:0 16px;
+      background:var(--panel); border-top:0 solid transparent;
+      transition:max-height .45s cubic-bezier(.65,0,.35,1), padding .45s cubic-bezier(.65,0,.35,1);
+    }
     .nav.open .nav-links{
-      display:flex; flex-direction:column; position:absolute; top:100%; left:0; right:0;
-      background:var(--panel); border-bottom:1px solid var(--border); padding:20px 32px; gap:16px;
+      max-height:320px; gap:16px; padding:20px 16px 24px; border-top:1px solid var(--border);
     }
   }
 </style>
@@ -566,7 +605,9 @@
       </a>
     </nav>
     <a class="btn btn-primary btn-sm" href="#home" data-page="home" data-scroll="download">Download</a>
-    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">☰</button>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
   </div>
 </header>
 
