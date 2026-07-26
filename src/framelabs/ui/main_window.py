@@ -1,6 +1,7 @@
 """Main application window for FrameLabs."""
 
 import logging
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
@@ -25,6 +26,8 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
+from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
+from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
 from framelabs.project.project import Project
 from framelabs.timeline.onion_skin import OnionSkinSettings
@@ -564,6 +567,19 @@ class MainWindow(QMainWindow):
             self._on_frame_preview_requested
         )
 
+        # Audio/References/Overlays: one add_requested and one item_
+        # context_menu_requested signal per kind, wired generically via
+        # functools.partial binding each to its own kind string, rather
+        # than three near-identical handler methods -- same reasoning
+        # ProjectBrowserWidget/asset_service.py already use.
+        for kind in ("audio", "references", "overlays"):
+            getattr(self.project_browser_widget, f"{kind}_add_requested").connect(
+                partial(self._on_asset_add_requested, kind)
+            )
+            getattr(
+                self.project_browser_widget, f"{kind}_item_context_menu_requested"
+            ).connect(partial(self._on_asset_item_context_menu_requested, kind))
+
     def _on_frame_selected(self, index: int) -> None:
         """React to a thumbnail click in the Timeline strip.
 
@@ -764,6 +780,105 @@ class MainWindow(QMainWindow):
             )
             return
         logger.info("Export deleted: %s", file_path)
+        self.project_browser_widget.set_project(self.project)
+
+    _ASSET_FILE_FILTERS = {
+        "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",
+        "references": "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)",
+        "overlays": "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)",
+    }
+
+    def _on_asset_add_requested(self, kind: str, global_pos) -> None:
+        """Show "Add <Kind> File...", then run AddAssetCommand.
+
+        Triggered by right-click on empty space in one of the Audio/
+        References/Overlays lists -- the only way to import a new file
+        into a section that starts genuinely empty, since there's no
+        other "Add" UI anywhere yet (see ProjectBrowserWidget's module
+        docstring). Goes through self.undo_manager like every other
+        project-mutating action in this app.
+        """
+        if self.project is None:
+            return
+
+        menu = QMenu(self)
+        add_action = menu.addAction(f"Add {kind.capitalize()} File...")
+        chosen = menu.exec(global_pos)
+        if chosen is not add_action:
+            return
+
+        file_filter = self._ASSET_FILE_FILTERS[kind]
+        source_file, _ = QFileDialog.getOpenFileName(
+            self, f"Add {kind.capitalize()} File", "", file_filter
+        )
+        if not source_file:
+            return
+
+        command = AddAssetCommand(self.project, self.event_bus, kind, Path(source_file))
+        try:
+            self.undo_manager.execute(command)
+        except AssetServiceError as exc:
+            logger.error("Failed to add %s asset: %s", kind, exc)
+            QMessageBox.warning(self, "Add Failed", str(exc))
+            return
+        self._update_undo_redo_actions()
+        self.project_browser_widget.set_project(self.project)
+
+    def _on_asset_item_context_menu_requested(
+        self, kind: str, relative_path: str, global_pos
+    ) -> None:
+        """Show Open File / Open Containing Folder / Remove from Project
+        for an existing tracked Audio/References/Overlays item.
+
+        Same QDesktopServices.openUrl() pattern the Exports menu already
+        uses. Remove from Project is undoable (unlike Delete Export) --
+        see asset_commands.py's RemoveAssetCommand docstring for why:
+        these are user-supplied source files the app can't reproduce on
+        its own if removed by mistake.
+        """
+        if self.project is None or self.project.project_path is None:
+            return
+        real_path = self.project.project_path / relative_path
+
+        menu = QMenu(self)
+        open_action = menu.addAction("Open File")
+        open_folder_action = menu.addAction("Open Containing Folder")
+        remove_action = menu.addAction("Remove from Project")
+        chosen = menu.exec(global_pos)
+
+        if chosen is open_action:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(real_path)))
+        elif chosen is open_folder_action:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(real_path.parent)))
+        elif chosen is remove_action:
+            self._remove_asset(kind, relative_path)
+
+    def _remove_asset(self, kind: str, relative_path: str) -> None:
+        """Confirm, then run RemoveAssetCommand through self.undo_manager.
+
+        Mirrors _delete_export()'s shape, but undoable -- see
+        _on_asset_item_context_menu_requested's docstring for why.
+        """
+        if self.project is None:
+            return
+        filename = relative_path.rsplit("/", 1)[-1]
+        confirm = QMessageBox.question(
+            self,
+            "Remove from Project",
+            f'Remove "{filename}" from the project?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        command = RemoveAssetCommand(self.project, self.event_bus, kind, relative_path)
+        try:
+            self.undo_manager.execute(command)
+        except AssetServiceError as exc:
+            logger.error("Failed to remove %s asset: %s", kind, exc)
+            QMessageBox.warning(self, "Remove Failed", str(exc))
+            return
+        self._update_undo_redo_actions()
         self.project_browser_widget.set_project(self.project)
 
     def _refresh_timeline_widget(self) -> None:

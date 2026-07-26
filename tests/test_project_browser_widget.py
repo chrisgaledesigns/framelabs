@@ -344,3 +344,96 @@ def test_right_clicking_export_row_emits_export_context_menu_requested_with_file
         widget._on_exports_list_context_menu_requested(pos)
 
     assert blocker.args[0] == "robot_walk.blend"
+
+
+def _asset_list_labels(widget: ProjectBrowserWidget, kind: str) -> list[str]:
+    list_widget = widget._asset_lists[kind]
+    return [list_widget.item(i).text() for i in range(list_widget.count())]
+
+
+def test_asset_lists_populate_from_project_lists(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    project.audio = ["audio/track.wav"]
+    project.references = ["references/pose.png", "references/pose (2).png"]
+    project.overlays = ["overlays/layout.png"]
+
+    widget.set_project(project)
+
+    assert _asset_list_labels(widget, "audio") == ["track.wav"]
+    assert _asset_list_labels(widget, "references") == ["pose.png", "pose (2).png"]
+    assert _asset_list_labels(widget, "overlays") == ["layout.png"]
+
+
+def test_asset_lists_empty_when_project_lists_empty(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+
+    widget.set_project(project)
+
+    for kind in ("audio", "references", "overlays"):
+        assert _asset_list_labels(widget, kind) == []
+
+
+def test_right_clicking_empty_asset_area_emits_add_requested(qtbot, tmp_path):
+    """Right-click on empty space in an Audio/References/Overlays list is
+    the only way to import a new file into a section that starts
+    genuinely empty (see module docstring)."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    widget.set_project(project)
+
+    with qtbot.waitSignal(widget.audio_add_requested, timeout=1000):
+        widget._on_asset_list_context_menu_requested("audio", QPoint(9999, 9999))
+
+
+def test_right_clicking_existing_asset_item_emits_item_context_menu_requested(
+    qtbot, tmp_path
+):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    project.references = ["references/pose.png"]
+    widget.set_project(project)
+    item = widget._asset_lists["references"].item(0)
+    pos = widget._asset_lists["references"].visualItemRect(item).center()
+
+    with qtbot.waitSignal(
+        widget.references_item_context_menu_requested, timeout=1000
+    ) as blocker:
+        widget._on_asset_list_context_menu_requested("references", pos)
+
+    assert blocker.args[0] == "references/pose.png"
+
+
+def test_right_clicking_existing_asset_item_does_not_emit_add_requested(
+    qtbot, tmp_path
+):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    project.overlays = ["overlays/layout.png"]
+    widget.set_project(project)
+    item = widget._asset_lists["overlays"].item(0)
+    pos = widget._asset_lists["overlays"].visualItemRect(item).center()
+
+    received = []
+    widget.overlays_add_requested.connect(lambda *args: received.append(args))
+    widget._on_asset_list_context_menu_requested("overlays", pos)
+
+    assert received == []
+
+
+def test_set_project_none_clears_asset_lists(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    project.audio = ["audio/track.wav"]
+    widget.set_project(project)
+
+    widget.set_project(None)
+
+    assert _asset_list_labels(widget, "audio") == []
