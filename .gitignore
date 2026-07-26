@@ -223,3 +223,4 @@ test_capture.png
 # should be created inside this folder so they're never accidentally committed.
 manual_test_projects/
 *.patch
+Images/
