@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from framelabs.core.event_bus import EventBus
-from framelabs.export.export_service import ExportServiceError
+from framelabs.export.export_service import ExportRequest, ExportServiceError
 from framelabs.project.creator import create_new_project
 from framelabs.project.project import Frame
 from framelabs.ui.export_controller import ExportController
@@ -34,33 +34,44 @@ def _make_project(tmp_path, frame_count=1):
     return project
 
 
+def _make_request(project, **kwargs):
+    """An ExportRequest with all three formats checked by default, so
+    existing tests written before the Export dialog still exercise the
+    same "all three" behavior unless a test overrides specific flags."""
+    kwargs.setdefault("want_video", True)
+    kwargs.setdefault("want_image_sequence", True)
+    kwargs.setdefault("want_gif", True)
+    return ExportRequest(project=project, **kwargs)
+
+
 def test_export_requested_signal_is_wired_to_handler(tmp_path):
     """On construction, export_requested should already be wired to
     _handle_export_requested, so MainWindow only ever needs to emit the
     public signal, never call the handler directly."""
     controller = ExportController(EventBus())
-    project = _make_project(tmp_path)
+    request = _make_request(_make_project(tmp_path))
 
     succeeded_slot = MagicMock()
     controller.export_succeeded.connect(succeeded_slot)
 
-    controller.export_requested.emit(project)
+    controller.export_requested.emit(request)
 
     succeeded_slot.assert_called_once()
 
 
 def test_handle_export_requested_success_emits_succeeded(tmp_path):
-    """A project with real frames should emit export_succeeded with an
-    ExportResult reporting all three formats as succeeded."""
+    """A request with real frames and all three formats checked should
+    emit export_succeeded with an ExportResult reporting all three
+    formats as succeeded."""
     controller = ExportController(EventBus())
-    project = _make_project(tmp_path, frame_count=2)
+    request = _make_request(_make_project(tmp_path, frame_count=2))
 
     succeeded_slot = MagicMock()
     failed_slot = MagicMock()
     controller.export_succeeded.connect(succeeded_slot)
     controller.export_failed.connect(failed_slot)
 
-    controller._handle_export_requested(project)
+    controller._handle_export_requested(request)
 
     succeeded_slot.assert_called_once()
     failed_slot.assert_not_called()
@@ -69,19 +80,44 @@ def test_handle_export_requested_success_emits_succeeded(tmp_path):
     assert not result.failed
 
 
-def test_handle_export_requested_no_frames_emits_failed(tmp_path):
-    """A project with no frames (ExportServiceError raised before any
-    output is created) should emit export_failed rather than raising and
-    crashing the worker thread."""
+def test_handle_export_requested_only_checked_formats_run(tmp_path):
+    """A request checking only GIF should only report GIF as succeeded
+    -- the controller-level equivalent of the Export dialog letting the
+    user pick specific formats rather than always exporting all three."""
     controller = ExportController(EventBus())
-    project = _make_project(tmp_path, frame_count=0)
+    request = _make_request(
+        _make_project(tmp_path, frame_count=1),
+        want_video=False,
+        want_image_sequence=False,
+        want_gif=True,
+    )
 
     succeeded_slot = MagicMock()
     failed_slot = MagicMock()
     controller.export_succeeded.connect(succeeded_slot)
     controller.export_failed.connect(failed_slot)
 
-    controller._handle_export_requested(project)  # should not raise
+    controller._handle_export_requested(request)
+
+    succeeded_slot.assert_called_once()
+    failed_slot.assert_not_called()
+    result = succeeded_slot.call_args.args[0]
+    assert set(result.succeeded) == {"gif"}
+
+
+def test_handle_export_requested_no_frames_emits_failed(tmp_path):
+    """A project with no frames (ExportServiceError raised before any
+    output is created) should emit export_failed rather than raising and
+    crashing the worker thread."""
+    controller = ExportController(EventBus())
+    request = _make_request(_make_project(tmp_path, frame_count=0))
+
+    succeeded_slot = MagicMock()
+    failed_slot = MagicMock()
+    controller.export_succeeded.connect(succeeded_slot)
+    controller.export_failed.connect(failed_slot)
+
+    controller._handle_export_requested(request)  # should not raise
 
     failed_slot.assert_called_once()
     succeeded_slot.assert_not_called()
@@ -97,7 +133,7 @@ def test_handle_export_requested_unexpected_error_still_emits_failed(
     the Export menu item stayed disabled forever with no dialog, because
     MainWindow had no way to learn the export had ended."""
     controller = ExportController(EventBus())
-    project = _make_project(tmp_path)
+    request = _make_request(_make_project(tmp_path))
 
     def _raise(*args, **kwargs):
         raise ValueError("simulated unwrapped error")
@@ -109,7 +145,7 @@ def test_handle_export_requested_unexpected_error_still_emits_failed(
     controller.export_succeeded.connect(succeeded_slot)
     controller.export_failed.connect(failed_slot)
 
-    controller._handle_export_requested(project)  # should not raise
+    controller._handle_export_requested(request)  # should not raise
 
     failed_slot.assert_called_once()
     succeeded_slot.assert_not_called()
@@ -123,7 +159,7 @@ def test_handle_export_requested_partial_failure_still_emits_succeeded(
     non-empty ExportResult.failed -- not export_failed, since that's
     reserved for "nothing at all could be exported"."""
     controller = ExportController(EventBus())
-    project = _make_project(tmp_path)
+    request = _make_request(_make_project(tmp_path))
 
     def _raise(*args, **kwargs):
         raise ExportServiceError("simulated codec failure")
@@ -135,7 +171,7 @@ def test_handle_export_requested_partial_failure_still_emits_succeeded(
     controller.export_succeeded.connect(succeeded_slot)
     controller.export_failed.connect(failed_slot)
 
-    controller._handle_export_requested(project)
+    controller._handle_export_requested(request)
 
     failed_slot.assert_not_called()
     succeeded_slot.assert_called_once()

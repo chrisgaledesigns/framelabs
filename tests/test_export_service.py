@@ -7,6 +7,7 @@ from PIL import Image
 
 from framelabs.core.event_bus import EventBus
 from framelabs.export.export_service import (
+    ExportRequest,
     ExportServiceError,
     export_all,
     export_gif,
@@ -78,6 +79,35 @@ def test_export_video_no_frames_raises(tmp_path):
         export_video(project, event_bus, "basename")
 
 
+def test_export_video_explicit_codec_is_honored(tmp_path):
+    """Passing an explicit FourCC rather than "auto" should use only
+    that codec -- mirrors the Export dialog's codec dropdown letting the
+    user pick MPEG-4 deliberately rather than always trying H.264
+    first."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+
+    output_path = export_video(project, event_bus, "basename", codec="mp4v")
+
+    assert output_path.exists()
+    capture = cv2.VideoCapture(str(output_path))
+    assert capture.isOpened()
+    capture.release()
+
+
+def test_export_video_explicit_unsupported_codec_raises_no_fallback(tmp_path):
+    """An explicit, bogus codec should raise rather than silently
+    falling back to another FourCC -- a fallback here would give the
+    user a different format than the one they deliberately chose."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+
+    with pytest.raises(ExportServiceError):
+        export_video(project, event_bus, "basename", codec="bogus_fourcc")
+
+
 def test_export_image_sequence_renumbers_sequentially(tmp_path):
     project = _make_project(tmp_path)
     # Non-contiguous numbers, e.g. after a Delete Frame.
@@ -141,12 +171,62 @@ def test_export_gif_wraps_non_oserror_frame_failure(tmp_path, monkeypatch):
         export_gif(project, event_bus, "basename")
 
 
+def test_export_gif_fps_override_changes_frame_duration(tmp_path):
+    """An explicit fps should change the GIF's per-frame duration rather
+    than always deriving it from project.fps -- mirrors the Export
+    dialog's editable FPS field."""
+    project = _make_project(tmp_path, fps=12)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    event_bus = EventBus()
+
+    output_path = export_gif(project, event_bus, "basename", fps=24)
+
+    with Image.open(output_path) as gif:
+        # GIF stores delay in centiseconds, so Pillow quantizes our
+        # millisecond duration to the nearest 10ms on save.
+        assert gif.info.get("duration") == round(round(1000 / 24) / 10) * 10
+
+
+def test_export_gif_no_fps_uses_project_fps(tmp_path):
+    project = _make_project(tmp_path, fps=10)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    event_bus = EventBus()
+
+    output_path = export_gif(project, event_bus, "basename")
+
+    with Image.open(output_path) as gif:
+        assert gif.info.get("duration") == round(round(1000 / 10) / 10) * 10
+
+
+def test_export_all_runs_only_requested_formats(tmp_path):
+    """A request checking only GIF should export just the GIF, not
+    video or the image sequence -- the whole point of the Export
+    dialog letting the user pick specific formats."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+    request = ExportRequest(project=project, want_gif=True)
+
+    result = export_all(request, event_bus)
+
+    assert set(result.succeeded) == {"gif"}
+    assert not result.failed
+
+
 def test_export_all_shares_one_basename(tmp_path):
     project = _make_project(tmp_path)
     _add_frame(project, 1)
     event_bus = EventBus()
+    request = ExportRequest(
+        project=project,
+        want_video=True,
+        want_image_sequence=True,
+        want_gif=True,
+    )
 
-    result = export_all(project, event_bus)
+    result = export_all(request, event_bus)
 
     assert set(result.succeeded) == {"video", "image_sequence", "gif"}
     assert not result.failed
@@ -160,6 +240,45 @@ def test_export_all_shares_one_basename(tmp_path):
 def test_export_all_no_frames_raises(tmp_path):
     project = _make_project(tmp_path)
     event_bus = EventBus()
+    request = ExportRequest(project=project, want_video=True)
 
     with pytest.raises(ExportServiceError):
-        export_all(project, event_bus)
+        export_all(request, event_bus)
+
+
+def test_export_all_nothing_selected_raises(tmp_path):
+    """A request with every want_* flag left False should raise rather
+    than silently doing nothing -- belt-and-suspenders behind the
+    Export dialog's own Export-button-disabled guard."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+    request = ExportRequest(project=project)
+
+    with pytest.raises(ExportServiceError):
+        export_all(request, event_bus)
+
+
+def test_export_all_passes_video_codec_through(tmp_path):
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+    request = ExportRequest(project=project, want_video=True, video_codec="mp4v")
+
+    result = export_all(request, event_bus)
+
+    assert "video" in result.succeeded
+    assert not result.failed
+
+
+def test_export_all_passes_gif_fps_through(tmp_path):
+    project = _make_project(tmp_path, fps=12)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    event_bus = EventBus()
+    request = ExportRequest(project=project, want_gif=True, gif_fps=30)
+
+    result = export_all(request, event_bus)
+
+    with Image.open(result.succeeded["gif"]) as gif:
+        assert gif.info.get("duration") == round(round(1000 / 30) / 10) * 10
