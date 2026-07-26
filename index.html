@@ -45,7 +45,7 @@
   img,svg{ max-width:100%; }
   ::selection{ background: var(--teal-dim); color: var(--text); }
 
-  .container{ width:100%; max-width:1160px; margin:0 auto; padding:0 32px; }
+  .container{ width:100%; max-width:1160px; margin:0 auto; padding:0 24px; }
   section{ padding: 88px 0; }
   .eyebrow{
     font-family: var(--mono);
@@ -487,6 +487,44 @@
 
   /* ---------- responsive ---------- */
   @media (max-width:960px){
+
+/* ChatGPT mobile fixes */
+    .container{padding:0 16px;}
+    .nav-inner{padding:12px 16px;justify-content:space-between;gap:0;}
+    .header-logo{height:32px !important;width:auto;}
+    .nav-toggle{width:42px;height:42px;flex-shrink:0;display:inline-flex!important;align-items:center;justify-content:center;}
+    .fact-strip{grid-template-columns:1fr;}
+    .mockup{overflow-x:auto;}
+
+    /* Update the navigation wrapper to handle mobile spacing */
+.nav-inner {
+  padding: 12px 20px; /* Reduces excessive desktop padding */
+  justify-content: space-between; /* Pushes logo and hamburger button to edges */
+  gap: 12px;
+}
+
+/* Shrink the logo slightly so it does not crowd small mobile displays */
+.brand img.header-logo {
+  height: 36px !important; /* Drops from 48px to 36px on mobile viewports */
+}
+
+/* Hide the wide desktop navigation links entirely */
+.nav-links {
+  display: none !important; /* Prevents desktop links from crowding the line */
+}
+
+/* Hide the large download CTA button on small headers if necessary, or let it fit */
+.nav-inner .btn-primary {
+  display: none; /* Hiding this frees up space for a clean mobile header */
+}
+
+/* Reveal your built-in mobile menu toggle icon */
+.nav-toggle {
+  display: inline-flex !important; /* Switches button from display:none to visible */
+  align-items: center;
+  justify-content: center;
+}
+
     .feat-highlights, .horizon-grid, .os-grid{ grid-template-columns:repeat(2,1fr); }
     .mockup-grid{ grid-template-columns:120px 1fr 150px; }
     .stat-rail, .ru-stat-rail{ grid-template-columns:repeat(2,1fr); }
@@ -499,20 +537,6 @@
       display:flex; flex-direction:column; position:absolute; top:100%; left:0; right:0;
       background:var(--panel); border-bottom:1px solid var(--border); padding:20px 32px; gap:16px;
     }
-  }
-  @media (max-width:640px){
-    section{ padding:56px 0; }
-    .container{ padding:0 20px; }
-    .hero h1{ font-size:32px; }
-    .feat-highlights, .horizon-grid, .os-grid, .fact-strip, .arch-row, .principles-grid, .methods-list{ grid-template-columns:1fr; }
-    .mockup-grid{ display:none; }
-    .roadmap-teaser{ flex-direction:column; align-items:flex-start; }
-    .ru-track-nodes{ overflow-x:auto; justify-content:flex-start; gap:20px; padding:0 8px; }
-    .ru-track-line, .ru-track-line-fill{ display:none; }
-    .ru-trow{ display:block; margin-bottom:14px; }
-    .ru-trow .tname, .ru-trow .tval{ width:auto; text-align:left; margin-bottom:4px; display:block; }
-    .headerline, .ru-headerline{ display:block!important; }
-    .ru-meta{ flex-wrap:wrap; gap:8px 20px; }
   }
 </style>
 </head>
@@ -529,7 +553,7 @@
 <header class="nav" id="siteNav">
   <div class="nav-inner">
     <a class="brand" href="#home" data-page="home">
-      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;">
+      <img src="Logo_Horizontal.png" alt="FrameLabs" style="height:48px; width:auto;" class="header-logo">
     </a>
     <nav class="nav-links" id="navLinks">
       <a data-page="home" href="#home">Home</a>
