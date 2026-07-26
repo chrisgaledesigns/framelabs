@@ -66,7 +66,11 @@ def test_no_project_shows_placeholder_and_hides_all_sections(qtbot):
         assert section.isHidden()
 
 
-def test_set_project_shows_all_three_sections_hides_placeholder(qtbot, tmp_path):
+def test_set_project_shows_all_headers_and_only_frames_content(qtbot, tmp_path):
+    """Session 16: sections are now collapsible accordions, only Frames
+    expanded by default -- every header is visible once a project opens,
+    but only Frames' content is, since every other section starts
+    collapsed (see module docstring)."""
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(tmp_path, [Frame(number=1, file="images/000001.png")])
@@ -74,8 +78,11 @@ def test_set_project_shows_all_three_sections_hides_placeholder(qtbot, tmp_path)
     widget.set_project(project)
 
     assert widget._no_project_label.isHidden()
-    for section in widget._section_widgets():
-        assert not section.isHidden()
+    for header in widget._section_headers.values():
+        assert not header.isHidden()
+    assert not widget._frames_grid.isHidden()
+    for key in ("audio", "references", "overlays", "notes", "exports"):
+        assert widget._section_content[key].isHidden()
 
 
 def test_frames_grid_has_one_tile_per_frame_in_order(qtbot, tmp_path):
@@ -437,3 +444,59 @@ def test_set_project_none_clears_asset_lists(qtbot, tmp_path):
     widget.set_project(None)
 
     assert _asset_list_labels(widget, "audio") == []
+
+
+def test_frames_header_starts_expanded_others_start_collapsed(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+
+    widget.set_project(project)
+
+    assert widget._frames_header.isChecked() is True
+    for key in ("audio", "references", "overlays", "notes", "exports"):
+        assert widget._section_headers[key].isChecked() is False
+
+
+def test_clicking_header_expands_its_own_section_only(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    widget.set_project(project)
+
+    widget._notes_header.setChecked(True)
+
+    assert not widget._notes_list.isHidden()
+    for key in ("audio", "references", "overlays", "exports"):
+        assert widget._section_content[key].isHidden()
+    # Frames was already expanded and stays that way, unaffected.
+    assert not widget._frames_grid.isHidden()
+
+
+def test_clicking_expanded_header_collapses_its_section(qtbot, tmp_path):
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    widget.set_project(project)
+
+    widget._frames_header.setChecked(False)
+
+    assert widget._frames_grid.isHidden()
+
+
+def test_collapse_state_persists_across_set_project_calls(qtbot, tmp_path):
+    """Expanding a section, then reloading/switching projects, must not
+    silently re-collapse it back to the default state."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    widget.set_project(project)
+    widget._notes_header.setChecked(True)
+
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    other_project = _make_project(other_dir, [])
+    widget.set_project(other_project)
+
+    assert widget._notes_header.isChecked() is True
+    assert not widget._notes_list.isHidden()
