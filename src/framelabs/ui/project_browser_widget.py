@@ -2,23 +2,24 @@
 
 Real per-project navigation panel, following the Project Vision PDF's Main
 Window Layout wireframe (Frames / Audio / References / Overlays / Notes /
-Exports / Plugins), but scoped down per Chris's explicit choice: only the
-three sections with a real, working data source behind them are shown --
-Frames (a real thumbnail grid, reading the same project_path/thumbnails
-files TimelineWidget already reads), Notes (frames with real note text
-attached, per Feature 5), and Exports (a real scan of the project's
-on-disk exports/ folder, per Feature 1's project layout). Audio,
-References, Overlays, and Plugins have no project-level data model or
-folder yet, so showing them now would just be four permanently-empty
-sections masquerading as finished features -- they'll be added to this
-widget once each of those features is actually built, not before.
+Exports / Plugins). Frames (thumbnail grid), Notes (frames with real note
+text, Feature 5), and Exports (real disk scan of exports/) were the first
+three sections built, since they had real data sources from day one.
+
+Audio, References, and Overlays are now real too, backed by
+Project.audio/references/overlays (schema v3) and project/asset_service.py.
+All three are structurally identical (one list attribute, one matching
+subfolder), so they share one generic build/signal implementation below
+rather than three near-copies, the same reasoning project/asset_service.py
+itself uses.
 
 Frames renders as a real thumbnail grid (QListWidget in IconMode), not a
 text list, per Chris's explicit choice after seeing the first version --
-this is why Frames uses a different widget type than Notes/Exports below
-it, rather than one shared tree. Notes and Exports stay as simple text
-lists: Notes needs to show note content, and Exports needs to show
-filenames, neither of which benefits from a thumbnail grid.
+this is why Frames uses a different widget type than the text-list
+sections below it, rather than one shared tree. Notes, Exports, and now
+Audio/References/Overlays stay as simple text lists: none of them benefit
+from a thumbnail-sized icon (a filename doesn't, and audio files have no
+meaningful thumbnail at all).
 
 Like TimelineWidget and InspectorPanel, this widget holds no Project of its
 own -- MainWindow calls set_project() whenever the underlying project
@@ -28,10 +29,11 @@ Each section also supports right-click actions, not just browsing --
 Chris's explicit feedback after the first version was that the panel was
 "just a media browser but you can't really do anything with it." This
 widget itself only reports WHAT was right-clicked (raw frame index for
-Frames/Notes, filename for Exports) and WHERE, exactly the same
-"widget reports, MainWindow decides" split TimelineWidget already
-established for its own right-click menu -- MainWindow owns the actual
-QMenu contents and the resulting actions in every case:
+Frames/Notes, filename for Exports, project-relative path for
+Audio/References/Overlays) and WHERE, exactly the same "widget reports,
+MainWindow decides" split TimelineWidget already established for its own
+right-click menu -- MainWindow owns the actual QMenu contents and the
+resulting actions in every case:
 
 - Frames grid: emits frame_context_menu_requested(index, global_pos),
   the exact same signal shape as TimelineWidget's, so MainWindow can wire
@@ -42,10 +44,16 @@ QMenu contents and the resulting actions in every case:
   MainWindow shows Jump to Frame / Edit Note / Clear Note.
 - Exports list: emits export_context_menu_requested(filename, global_pos)
   -- MainWindow shows Open File / Open Containing Folder / Delete Export.
+- Audio/References/Overlays lists: right-click on an EXISTING tracked
+  item emits {kind}_item_context_menu_requested(relative_path, global_pos)
+  -- MainWindow shows Open File / Open Containing Folder / Remove from
+  Project. Right-click on EMPTY space in one of these three lists instead
+  emits {kind}_add_requested(global_pos) -- since these sections start
+  genuinely empty and there's no other "Add" UI anywhere yet, right-click
+  on empty space is the only way to import a new file into them.
 
 Double-click has two DIFFERENT meanings depending on which section is
 double-clicked, per Chris's explicit follow-up choice (session 15):
-
 - Notes list: double-click still emits frame_selected(index) -- jumps the
   Timeline playhead to that frame, exactly as before, same as a Timeline
   strip thumbnail click.
@@ -61,6 +69,8 @@ double-clicked, per Chris's explicit follow-up choice (session 15):
 """
 
 from __future__ import annotations
+
+from functools import partial
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
@@ -81,18 +91,34 @@ from framelabs.project.project import Project
 # "one shared set of handler methods taking a raw identifier" convention).
 _FRAME_INDEX_ROLE = Qt.ItemDataRole.UserRole
 
+# QListWidgetItem data slot used to stash an Audio/References/Overlays
+# item's project-relative path (e.g. "audio/scratch_track.wav"), the
+# string MainWindow needs to open/remove the real file. Uses the same
+# UserRole enum value as _FRAME_INDEX_ROLE -- each QListWidgetItem's data
+# is independent, so reusing the role number across different lists is
+# safe and matches how _FRAME_INDEX_ROLE itself is already reused across
+# the Frames grid and Notes list above.
+_ASSET_PATH_ROLE = Qt.ItemDataRole.UserRole
+
 # Grid tile size for the Frames thumbnail grid. Deliberately smaller than
 # TimelineWidget's THUMBNAIL_DISPLAY_HEIGHT (100px) -- this panel lives in
 # the narrow side splitter (main_window.py's setSizes() gives it ~250px),
 # so tiles need to be small enough that more than one fits per row.
 FRAME_TILE_SIZE = 72
 
+# The three asset kinds sharing one generic list-section implementation,
+# in display order. Matches Project.audio/references/overlays' attribute
+# names directly, so getattr(project, kind) always resolves correctly.
+_ASSET_KINDS = ("audio", "references", "overlays")
+
 
 class ProjectBrowserWidget(QWidget):
-    """Real per-project navigation panel: Frames grid / Notes / Exports.
+    """Real per-project navigation panel: Frames grid / Audio / References
+    / Overlays / Notes / Exports.
 
-    See module docstring for why only these three sections exist today,
-    and why Frames alone uses a thumbnail grid rather than a text list.
+    See module docstring for why Frames alone uses a thumbnail grid rather
+    than a text list, and why Audio/References/Overlays share one generic
+    implementation instead of three near-copies.
     """
 
     # Raw index into Project.frames / Timeline.frames, exactly matching
@@ -119,8 +145,23 @@ class ProjectBrowserWidget(QWidget):
     # right-clicked, by name (matches _build_exports_list's item text).
     export_context_menu_requested = Signal(str, QPoint)
 
+    # Audio/References/Overlays: right-click on EMPTY space in that
+    # section's list, requesting a new file be imported. global_pos is
+    # where MainWindow should show the "Add <Kind> File..." menu.
+    audio_add_requested = Signal(QPoint)
+    references_add_requested = Signal(QPoint)
+    overlays_add_requested = Signal(QPoint)
+
+    # Audio/References/Overlays: right-click on an EXISTING tracked item.
+    # Carries the item's project-relative path string (not a raw index --
+    # MainWindow needs the real path to open/remove the file, and these
+    # lists have no separate index-based lookup the way Frames/Notes do).
+    audio_item_context_menu_requested = Signal(str, QPoint)
+    references_item_context_menu_requested = Signal(str, QPoint)
+    overlays_item_context_menu_requested = Signal(str, QPoint)
+
     def __init__(self) -> None:
-        """Build the panel's three sections (initially empty/hidden)."""
+        """Build the panel's sections (initially empty/hidden)."""
         super().__init__()
 
         layout = QVBoxLayout(self)
@@ -132,7 +173,6 @@ class ProjectBrowserWidget(QWidget):
 
         self._frames_header = self._make_header("Frames")
         layout.addWidget(self._frames_header)
-
         self._frames_grid = QListWidget()
         self._frames_grid.setViewMode(QListWidget.ViewMode.IconMode)
         self._frames_grid.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -148,9 +188,27 @@ class ProjectBrowserWidget(QWidget):
         )
         layout.addWidget(self._frames_grid, 2)
 
+        # Audio/References/Overlays: one QListWidget per kind, built
+        # generically since all three are structurally identical. Stored
+        # in a dict keyed by kind so the generic handlers below can look
+        # up "which list, which signals" from a single kind string.
+        self._asset_headers: dict[str, QLabel] = {}
+        self._asset_lists: dict[str, QListWidget] = {}
+        for kind in _ASSET_KINDS:
+            header = self._make_header(kind.capitalize())
+            layout.addWidget(header)
+            self._asset_headers[kind] = header
+
+            list_widget = QListWidget()
+            list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            list_widget.customContextMenuRequested.connect(
+                partial(self._on_asset_list_context_menu_requested, kind)
+            )
+            layout.addWidget(list_widget, 1)
+            self._asset_lists[kind] = list_widget
+
         self._notes_header = self._make_header("Notes")
         layout.addWidget(self._notes_header)
-
         self._notes_list = QListWidget()
         self._notes_list.itemDoubleClicked.connect(self._on_indexed_item_double_clicked)
         self._notes_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -161,7 +219,6 @@ class ProjectBrowserWidget(QWidget):
 
         self._exports_header = self._make_header("Exports")
         layout.addWidget(self._exports_header)
-
         self._exports_list = QListWidget()
         self._exports_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._exports_list.customContextMenuRequested.connect(
@@ -182,14 +239,19 @@ class ProjectBrowserWidget(QWidget):
         """All section headers/lists, for the show/hide-together toggle
         between the "No project open" state and a real project's sections.
         """
-        return (
+        widgets: tuple[QWidget, ...] = (
             self._frames_header,
             self._frames_grid,
+        )
+        for kind in _ASSET_KINDS:
+            widgets += (self._asset_headers[kind], self._asset_lists[kind])
+        widgets += (
             self._notes_header,
             self._notes_list,
             self._exports_header,
             self._exports_list,
         )
+        return widgets
 
     def _show_no_project(self) -> None:
         """Show only the placeholder row; hide every real section."""
@@ -197,20 +259,24 @@ class ProjectBrowserWidget(QWidget):
         for widget in self._section_widgets():
             widget.setVisible(False)
         self._frames_grid.clear()
+        for kind in _ASSET_KINDS:
+            self._asset_lists[kind].clear()
         self._notes_list.clear()
         self._exports_list.clear()
 
     def set_project(self, project: Project | None) -> None:
-        """Rebuild the panel to match `project`'s current frames/notes/exports.
+        """Rebuild the panel to match `project`'s current state.
 
         Call this from the same places MainWindow calls
         _refresh_timeline_widget() -- new project, opened project, capture,
-        delete, replace, duplicate, undo, redo -- so the panel never shows
-        stale frame data. Safe to call with `project=None` (no active
-        project yet), which shows a single placeholder row instead of three
-        empty sections.
+        delete, replace, duplicate, undo, redo, and now any asset add/
+        remove -- so the panel never shows stale data. Safe to call with
+        `project=None` (no active project yet), which shows a single
+        placeholder row instead of every empty section.
         """
         self._frames_grid.clear()
+        for kind in _ASSET_KINDS:
+            self._asset_lists[kind].clear()
         self._notes_list.clear()
         self._exports_list.clear()
 
@@ -223,6 +289,8 @@ class ProjectBrowserWidget(QWidget):
             widget.setVisible(True)
 
         self._build_frames_grid(project)
+        for kind in _ASSET_KINDS:
+            self._build_asset_list(kind, project)
         self._build_notes_list(project)
         self._build_exports_list(project)
 
@@ -260,7 +328,6 @@ class ProjectBrowserWidget(QWidget):
             item = QListWidgetItem(str(frame.number))
             item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
             item.setData(_FRAME_INDEX_ROLE, index)
-
             if thumbnails_dir is not None:
                 thumbnail_path = thumbnails_dir / f"{frame.number:06d}.jpg"
                 pixmap = QPixmap(str(thumbnail_path))
@@ -272,8 +339,23 @@ class ProjectBrowserWidget(QWidget):
                         Qt.TransformationMode.SmoothTransformation,
                     )
                     item.setIcon(QIcon(pixmap))
-
             self._frames_grid.addItem(item)
+
+    def _build_asset_list(self, kind: str, project: Project) -> None:
+        """Fill one Audio/References/Overlays list from Project.{kind}.
+
+        Displays just the filename (not the full "audio/name.ext" project-
+        relative path) for readability, since every item in a given
+        section is already known to live in that section's subfolder --
+        the full relative path is stashed on the item via _ASSET_PATH_ROLE
+        for MainWindow's right-click handling to use.
+        """
+        list_widget = self._asset_lists[kind]
+        for relative_path in getattr(project, kind):
+            filename = relative_path.rsplit("/", 1)[-1]
+            item = QListWidgetItem(filename)
+            item.setData(_ASSET_PATH_ROLE, relative_path)
+            list_widget.addItem(item)
 
     def _build_notes_list(self, project: Project) -> None:
         """Fill the Notes list with only frames that have real note text.
@@ -353,6 +435,32 @@ class ProjectBrowserWidget(QWidget):
             return
         global_pos = self._frames_grid.viewport().mapToGlobal(pos)
         self.frame_context_menu_requested.emit(index, global_pos)
+
+    def _on_asset_list_context_menu_requested(self, kind: str, pos: QPoint) -> None:
+        """Emit the right add/item-context signal for `kind`'s list.
+
+        Right-click on EMPTY space (no item under `pos`) emits
+        {kind}_add_requested(global_pos) -- the only way to import a new
+        file into a section that starts genuinely empty. Right-click on
+        an EXISTING item emits {kind}_item_context_menu_requested(
+        relative_path, global_pos) instead, carrying the item's stashed
+        project-relative path.
+        """
+        list_widget = self._asset_lists[kind]
+        global_pos = list_widget.viewport().mapToGlobal(pos)
+        item = list_widget.itemAt(pos)
+
+        add_signal = getattr(self, f"{kind}_add_requested")
+        item_signal = getattr(self, f"{kind}_item_context_menu_requested")
+
+        if item is None:
+            add_signal.emit(global_pos)
+            return
+
+        relative_path = item.data(_ASSET_PATH_ROLE)
+        if relative_path is None:
+            return
+        item_signal.emit(relative_path, global_pos)
 
     def _on_notes_list_context_menu_requested(self, pos: QPoint) -> None:
         """Emit note_context_menu_requested for the row under `pos`."""
