@@ -532,11 +532,27 @@
        viewport width (clamp) instead of a single fixed small size, so
        phones get small, well-separated blobs while tablets still get
        enough coverage to not look empty/dark. */
-    .hero-bg .blob-1{ width:clamp(220px, 48vw, 520px); height:clamp(220px, 48vw, 520px); top:-60px; left:-70px; animation-name: float1-sm; opacity:.75; }
-    .hero-bg .blob-2{ width:clamp(200px, 44vw, 480px); height:clamp(200px, 44vw, 480px); top:-40px; right:-40px; animation-name: float2-sm; opacity:.75; }
-    .hero-bg .blob-3{ width:clamp(240px, 52vw, 560px); height:clamp(240px, 52vw, 560px); top:280px; left:40%; animation-name: float3-sm; opacity:.75; }
-    .hero-bg .blob-4{ width:clamp(220px, 48vw, 520px); height:clamp(220px, 48vw, 520px); bottom:-90px; right:-60px; animation-name: float4-sm; opacity:.75; }
-    .hero-bg .blob-5{ width:clamp(0px, 40vw, 380px); height:clamp(0px, 40vw, 380px); opacity:.3; }
+    .hero-bg .blob-1{ width:clamp(260px, 58vw, 540px); height:clamp(260px, 58vw, 540px); top:-60px; left:-70px; animation-name: float1-sm; opacity:.75; }
+    .hero-bg .blob-2{ width:clamp(240px, 54vw, 500px); height:clamp(240px, 54vw, 500px); top:-40px; right:-40px; animation-name: float2-sm; opacity:.75; }
+    .hero-bg .blob-3{ width:clamp(280px, 62vw, 580px); height:clamp(280px, 62vw, 580px); top:280px; left:40%; animation-name: float3-sm; opacity:.75; }
+    .hero-bg .blob-4{ width:clamp(260px, 58vw, 540px); height:clamp(260px, 58vw, 540px); bottom:-90px; right:-60px; animation-name: float4-sm; opacity:.75; }
+    .hero-bg .blob-5{ width:clamp(0px, 46vw, 400px); height:clamp(0px, 46vw, 400px); opacity:.3; }
+
+    /* The blur radius (not just blob size) is what actually kills mobile
+       rendering: a 140px blur forces every frame of the infinite animation
+       to render a huge soft buffer, combined with mix-blend-mode forcing
+       constant full-layer recompositing. Mobile GPUs have a much smaller
+       compositing budget than desktop, so this was silently causing
+       partial/failed paints (blank top or bottom of the page) that varied
+       by device. Cutting blur way down and dropping the blend mode keeps
+       the look but removes the load that was crashing the render. */
+    .hero-bg .blob{ filter: blur(50px); mix-blend-mode: normal; opacity:.35; }
+    .hero-bg{ -webkit-mask-image: linear-gradient(to bottom, black 0%, black 40%, transparent 100%); mask-image: linear-gradient(to bottom, black 0%, black 40%, transparent 100%); }
+
+    @media (prefers-reduced-motion: reduce){
+      .hero-bg .blob{ animation: none !important; }
+    }
+
     @keyframes float1-sm{
       0%   { transform: translate(0, 0) scale(1); }
       25%  { transform: translate(50px, 25px) scale(1.15); }
@@ -576,6 +592,10 @@
     .nav.open .nav-links{
       max-height:320px; gap:16px; padding:20px 16px 24px; border-top:1px solid var(--border);
     }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .hero-bg .blob{ animation: none !important; }
   }
 </style>
 </head>
