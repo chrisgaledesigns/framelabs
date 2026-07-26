@@ -184,6 +184,28 @@ def test_exports_list_lists_real_files_in_exports_folder(qtbot, tmp_path):
     ]
 
 
+def test_exports_list_lists_sequence_folders_with_trailing_slash(qtbot, tmp_path):
+    """export_image_sequence() writes a folder, not a file -- it should
+    still show up in the Exports list, suffixed with "/" so it's
+    recognizable as a folder rather than a single video/GIF export."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    exports_dir = project.project_path / "exports"
+    exports_dir.mkdir()
+    (exports_dir / "robot_walk.mp4").write_text("fake mp4 contents")
+    sequence_dir = exports_dir / "robot_walk_sequence"
+    sequence_dir.mkdir()
+    (sequence_dir / "000001.png").write_bytes(b"fake png bytes")
+
+    widget.set_project(project)
+
+    assert sorted(_exports_list_labels(widget)) == [
+        "robot_walk.mp4",
+        "robot_walk_sequence/",
+    ]
+
+
 def test_exports_list_empty_when_folder_missing(qtbot, tmp_path):
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)

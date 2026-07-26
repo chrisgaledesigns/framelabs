@@ -456,15 +456,21 @@ class ProjectBrowserWidget(QWidget):
             self._notes_list.addItem(item)
 
     def _build_exports_list(self, project: Project) -> None:
-        """Fill the Exports list with real files in project_path/exports.
+        """Fill the Exports list with real files AND folders in
+        project_path/exports.
 
-        A genuine disk scan, not a stub -- Feature 10 (Blender Export)
-        hasn't landed yet, so this will legitimately stay empty until it
-        does and starts writing real files there. The folder itself is
-        always created up front by create_new_project() per Feature 1's
-        project layout, but its absence is handled the same as "empty"
-        rather than as an error, so nothing here can crash a project that
-        otherwise opens fine.
+        A genuine disk scan, not a stub. Files are the video/GIF exports
+        from export_service.export_video()/export_gif(); folders are the
+        image-sequence exports from export_service.export_image_sequence()
+        (each one a self-contained numbered-frame folder, not a single
+        file). Folders are suffixed with "/" for display only -- Path
+        normalizes away a trailing slash, so
+        _on_exports_list_context_menu_requested()'s emitted filename still
+        resolves to the right path with no special-casing needed there.
+        The exports/ folder itself is always created up front by
+        create_new_project() per Feature 1's project layout, but its
+        absence is handled the same as "empty" rather than as an error,
+        so nothing here can crash a project that otherwise opens fine.
         """
         if project.project_path is None:
             return
@@ -472,7 +478,9 @@ class ProjectBrowserWidget(QWidget):
         if not exports_dir.is_dir():
             return
         for path in sorted(exports_dir.iterdir()):
-            if path.is_file():
+            if path.is_dir():
+                self._exports_list.addItem(QListWidgetItem(f"{path.name}/"))
+            elif path.is_file():
                 self._exports_list.addItem(QListWidgetItem(path.name))
 
     def _on_indexed_item_double_clicked(self, item: QListWidgetItem) -> None:

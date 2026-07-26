@@ -1,6 +1,7 @@
 """Main application window for FrameLabs."""
 
 import logging
+import shutil
 from functools import partial
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
+from framelabs.export.export_service import ExportResult
 from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
 from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
@@ -36,6 +38,7 @@ from framelabs.timeline.timeline import Timeline
 from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
+from framelabs.ui.export_controller import ExportController
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
@@ -99,6 +102,7 @@ class MainWindow(QMainWindow):
         self._start_onion_skin_controller()
         self._start_playback_controller()
         self._start_autosave_controller()
+        self._start_export_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
@@ -170,6 +174,9 @@ class MainWindow(QMainWindow):
         self.export_action = QAction("Export", self)
         self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
 
+        self.export_render_action = QAction("Export Video, Sequence && GIF...", self)
+        self.export_render_action.triggered.connect(self._on_export_render)
+
         self.blender_action = QAction("Open in Blender", self)
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
         self.blender_action.triggered.connect(
@@ -236,6 +243,9 @@ class MainWindow(QMainWindow):
 
         camera_menu = menu_bar.addMenu("&Camera")
         camera_menu.addAction(self.camera_action)
+
+        export_menu = menu_bar.addMenu("&Export")
+        export_menu.addAction(self.export_render_action)
 
         blender_menu = menu_bar.addMenu("&Blender")
         blender_menu.addAction(self.blender_action)
@@ -448,6 +458,23 @@ class MainWindow(QMainWindow):
         self._autosave_timer.setInterval(AUTOSAVE_INTERVAL_MS)
         self._autosave_timer.timeout.connect(self._on_autosave_timer_tick)
         self._autosave_timer.start()
+
+    def _start_export_controller(self) -> None:
+        """Create the export worker thread and wire its signals.
+
+        An EIGHTH separate thread -- rendering a full project to
+        video/GIF, or copying every frame into an image sequence, can
+        take real time on a long project and shouldn't contend with any
+        of the other seven.
+        """
+        self._export_thread = QThread(self)
+        self.export_controller = ExportController(self.event_bus)
+        self.export_controller.moveToThread(self._export_thread)
+
+        self.export_controller.export_succeeded.connect(self._on_export_succeeded)
+        self.export_controller.export_failed.connect(self._on_export_failed)
+
+        self._export_thread.start()
 
     def _on_autosave_timer_tick(self) -> None:
         """Fire one periodic autosave, per Feature 8's "every 30 seconds".
@@ -757,11 +784,16 @@ class MainWindow(QMainWindow):
             self._delete_export(file_path)
 
     def _delete_export(self, file_path: Path) -> None:
-        """Confirm, then permanently delete an export file from disk.
+        """Confirm, then permanently delete an export from disk.
 
-        No undo -- see _on_project_browser_export_context_menu_requested's
-        docstring for why that's the deliberate choice for exports
-        specifically, unlike every frame-destroying action in this file.
+        Handles both single-file exports (video/GIF) and the
+        image-sequence exports' folders -- export_image_sequence() writes
+        a whole numbered-frame folder, not one file, so this removes it
+        with shutil.rmtree() rather than Path.unlink(), which only works
+        on files. No undo either way -- see
+        _on_project_browser_export_context_menu_requested's docstring for
+        why that's the deliberate choice for exports specifically, unlike
+        every frame-destroying action in this file.
         """
         confirm = QMessageBox.question(
             self,
@@ -772,7 +804,10 @@ class MainWindow(QMainWindow):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         try:
-            file_path.unlink()
+            if file_path.is_dir():
+                shutil.rmtree(file_path)
+            else:
+                file_path.unlink()
         except OSError as exc:
             logger.error("Failed to delete export %s: %s", file_path, exc)
             QMessageBox.warning(
@@ -781,6 +816,51 @@ class MainWindow(QMainWindow):
             return
         logger.info("Export deleted: %s", file_path)
         self.project_browser_widget.set_project(self.project)
+
+    def _on_export_render(self) -> None:
+        """Trigger the "Export Video, Sequence & GIF" action.
+
+        Fires all three exports in one click, on ExportController's
+        worker thread -- see that module's docstring for why. Disables
+        the menu action for the duration so a second click can't overlap
+        an export already in progress; re-enabled in both
+        _on_export_succeeded() and _on_export_failed().
+        """
+        if self.project is None or self.project.project_path is None:
+            return
+        self.export_render_action.setEnabled(False)
+        self.export_controller.export_requested.emit(self.project)
+
+    def _on_export_succeeded(self, result: ExportResult) -> None:
+        """Report the finished export, refreshing the Exports list either
+        way -- a partial success (see export_all()'s docstring) still
+        writes real files that belong there."""
+        self.export_render_action.setEnabled(True)
+        if self.project is not None:
+            self.project_browser_widget.set_project(self.project)
+
+        if not result.failed:
+            QMessageBox.information(
+                self,
+                "Export Complete",
+                "Exported: " + ", ".join(sorted(result.succeeded)),
+            )
+            return
+
+        lines = [f"{key}: {message}" for key, message in result.failed.items()]
+        QMessageBox.warning(
+            self,
+            "Export Partially Failed",
+            "Succeeded: "
+            + (", ".join(sorted(result.succeeded)) or "none")
+            + "\n\nFailed:\n"
+            + "\n".join(lines),
+        )
+
+    def _on_export_failed(self, message: str) -> None:
+        """Report a total export failure (e.g. no frames to export)."""
+        self.export_render_action.setEnabled(True)
+        QMessageBox.warning(self, "Export Failed", message)
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",
@@ -1653,7 +1733,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all seven worker threads down cleanly before closing.
+        """Shut all eight worker threads down cleanly before closing.
 
         Sets self._shutting_down = True FIRST, before touching any thread.
         This closes a real race: PlaybackController.playhead_advanced is a
@@ -1717,5 +1797,9 @@ class MainWindow(QMainWindow):
         self._autosave_thread.finished.connect(self.autosave_controller.deleteLater)
         self._autosave_thread.quit()
         self._autosave_thread.wait(2000)
+
+        self._export_thread.finished.connect(self.export_controller.deleteLater)
+        self._export_thread.quit()
+        self._export_thread.wait(2000)
 
         super().closeEvent(event)
