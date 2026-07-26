@@ -39,6 +39,7 @@ from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.export_controller import ExportController
+from framelabs.ui.export_dialog import ExportDialog
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
@@ -174,7 +175,7 @@ class MainWindow(QMainWindow):
         self.export_action = QAction("Export", self)
         self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
 
-        self.export_render_action = QAction("Export Video, Sequence && GIF...", self)
+        self.export_render_action = QAction("Export...", self)
         self.export_render_action.triggered.connect(self._on_export_render)
 
         self.blender_action = QAction("Open in Blender", self)
@@ -818,18 +819,25 @@ class MainWindow(QMainWindow):
         self.project_browser_widget.set_project(self.project)
 
     def _on_export_render(self) -> None:
-        """Trigger the "Export Video, Sequence & GIF" action.
+        """Open the Export dialog, then fire only the formats the user
+        checked, on ExportController's worker thread -- see that
+        module's docstring for why exports run off the main thread.
 
-        Fires all three exports in one click, on ExportController's
-        worker thread -- see that module's docstring for why. Disables
-        the menu action for the duration so a second click can't overlap
-        an export already in progress; re-enabled in both
-        _on_export_succeeded() and _on_export_failed().
+        The dialog itself keeps its Export button disabled until at
+        least one format is checked, so a Cancel/close is the only way
+        to get here with nothing to run. Disables the menu action for
+        the export's duration so a second click can't overlap one
+        already in progress; re-enabled in both _on_export_succeeded()
+        and _on_export_failed().
         """
         if self.project is None or self.project.project_path is None:
             return
+        dialog = ExportDialog(self.project, self)
+        if not dialog.exec():
+            return
+        request = dialog.export_request()
         self.export_render_action.setEnabled(False)
-        self.export_controller.export_requested.emit(self.project)
+        self.export_controller.export_requested.emit(request)
 
     def _on_export_succeeded(self, result: ExportResult) -> None:
         """Report the finished export, refreshing the Exports list either

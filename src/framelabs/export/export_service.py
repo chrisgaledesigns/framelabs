@@ -21,6 +21,7 @@ import logging
 import re
 import shutil
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -62,6 +63,39 @@ class ExportResult:
 
     succeeded: dict[str, Path] = field(default_factory=dict)
     failed: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class ExportRequest:
+    """What a single Export dialog submission asked for.
+
+    Replaces export_all() always running all three formats -- the
+    Export dialog (ui/export_dialog.py) builds one of these from
+    whichever formats the user actually checked, plus their chosen
+    per-format settings, and nothing else runs.
+
+    Attributes:
+        project: The active project to export.
+        want_video: Whether to render an MP4.
+        want_image_sequence: Whether to write a renumbered image
+            sequence folder.
+        want_gif: Whether to render a looping animated GIF.
+        video_codec: "auto" tries "avc1" then falls back to "mp4v" (the
+            original, pre-dialog behavior). Any other value is treated
+            as an explicit FourCC the user chose deliberately -- only
+            that one codec is attempted, with no fallback.
+        gif_fps: Frame rate used for the GIF's per-frame duration. None
+            means use project.fps (the original, pre-dialog behavior);
+            the dialog always sends an explicit value from its FPS
+            field, defaulted to project.fps.
+    """
+
+    project: Project
+    want_video: bool = False
+    want_image_sequence: bool = False
+    want_gif: bool = False
+    video_codec: str = "auto"
+    gif_fps: float | None = None
 
 
 def _ordered_frames(project: Project) -> list[Frame]:
@@ -114,14 +148,21 @@ def _exports_dir(project: Project) -> Path:
     return exports_dir
 
 
-def export_video(project: Project, event_bus: EventBus, basename: str) -> Path:
+def export_video(
+    project: Project, event_bus: EventBus, basename: str, codec: str = "auto"
+) -> Path:
     """Render every frame, in Timeline order, to an MP4 at project.fps.
 
-    Tries "avc1" (H.264) first, falling back to the always-available
-    "mp4v" (MPEG-4) FourCC. cv2.VideoWriter.isOpened() is checked
-    explicitly after each attempt rather than assumed -- OpenCV silently
-    hands back an unusable writer instead of raising when a FourCC isn't
-    supported by the local build/system codecs.
+    codec="auto" (the default) tries "avc1" (H.264) first, falling back
+    to the always-available "mp4v" (MPEG-4) FourCC. Any other value is
+    treated as an explicit FourCC the caller chose deliberately (via the
+    Export dialog) -- only that one codec is attempted, with no
+    fallback, since a fallback would silently give the user a different
+    format than the one they picked. Either way,
+    cv2.VideoWriter.isOpened() is checked explicitly after each attempt
+    rather than assumed -- OpenCV silently hands back an unusable writer
+    instead of raising when a FourCC isn't supported by the local
+    build/system codecs.
 
     Args:
         project: The active project. Must have a non-None project_path
@@ -129,22 +170,31 @@ def export_video(project: Project, event_bus: EventBus, basename: str) -> Path:
         event_bus: The event bus VIDEO_EXPORTED is published on.
         basename: Shared base filename, no extension (see
             _export_basename()).
+        codec: "auto", or an explicit FourCC ("avc1"/"mp4v").
 
     Returns:
         The real path of the written .mp4 file.
 
     Raises:
-        ExportServiceError: If the project has no frames, no FourCC this
-            OpenCV build supports could open a writer, or a frame image
-            can't be read.
+        ExportServiceError: If the project has no frames, no attempted
+            FourCC could open a writer, or a frame image can't be read.
     """
     frames = _require_frames(project)
     width, height = project.resolution
     output_path = _exports_dir(project) / f"{basename}.mp4"
 
+    fourcc_codes = _VIDEO_FOURCCS if codec == "auto" else (codec,)
+
     writer = None
-    for fourcc_code in _VIDEO_FOURCCS:
-        fourcc = cv2.VideoWriter.fourcc(*fourcc_code)
+    for fourcc_code in fourcc_codes:
+        try:
+            fourcc = cv2.VideoWriter.fourcc(*fourcc_code)
+        except TypeError:
+            # cv2.VideoWriter.fourcc() requires exactly 4 characters; an
+            # invalid explicit codec (e.g. a typo) should fail this one
+            # attempt gracefully, not crash -- it still ends up raising
+            # ExportServiceError below once every attempt is exhausted.
+            continue
         candidate = cv2.VideoWriter(
             str(output_path), fourcc, float(project.fps), (width, height)
         )
@@ -155,7 +205,8 @@ def export_video(project: Project, event_bus: EventBus, basename: str) -> Path:
 
     if writer is None:
         raise ExportServiceError(
-            "No available video codec could open a writer for this export."
+            "No available video codec could open a writer for this "
+            f"export (tried: {', '.join(fourcc_codes)})."
         )
 
     try:
@@ -224,9 +275,10 @@ def export_image_sequence(project: Project, event_bus: EventBus, basename: str) 
     return sequence_dir
 
 
-def export_gif(project: Project, event_bus: EventBus, basename: str) -> Path:
-    """Render every frame, in Timeline order, to a looping animated GIF
-    at project.fps.
+def export_gif(
+    project: Project, event_bus: EventBus, basename: str, fps: float | None = None
+) -> Path:
+    """Render every frame, in Timeline order, to a looping animated GIF.
 
     Uses Pillow rather than OpenCV -- OpenCV has no animated GIF encoder,
     and Pillow's is small, well-established, and MIT-licensed like the
@@ -238,6 +290,9 @@ def export_gif(project: Project, event_bus: EventBus, basename: str) -> Path:
         event_bus: The event bus GIF_EXPORTED is published on.
         basename: Shared base filename, no extension (see
             _export_basename()).
+        fps: Frame rate for the GIF's per-frame duration. None (the
+            default) uses project.fps -- the Export dialog always sends
+            an explicit value instead, defaulted to project.fps.
 
     Returns:
         The real path of the written .gif file.
@@ -248,7 +303,8 @@ def export_gif(project: Project, event_bus: EventBus, basename: str) -> Path:
     """
     frames = _require_frames(project)
     output_path = _exports_dir(project) / f"{basename}.gif"
-    duration_ms = round(1000 / project.fps)
+    effective_fps = project.fps if fps is None else fps
+    duration_ms = round(1000 / effective_fps)
 
     total = len(frames)
     images = []
@@ -308,19 +364,20 @@ def export_gif(project: Project, event_bus: EventBus, basename: str) -> Path:
     return output_path
 
 
-def export_all(project: Project, event_bus: EventBus) -> ExportResult:
-    """Export video, image sequence, and GIF in one call, sharing one
-    timestamped basename so the three outputs are recognizable in the
-    Exports list as belonging together.
+def export_all(request: ExportRequest, event_bus: EventBus) -> ExportResult:
+    """Export whichever formats the Export dialog's ExportRequest asked
+    for, sharing one timestamped basename so the outputs are recognizable
+    in the Exports list as belonging together.
 
-    Runs all three independently -- one format failing (e.g. no usable
-    video codec on this machine) doesn't stop the other two from being
-    written, per the Handbook's "never lose user data" spirit: partial
-    output beats none. Only raises if the project has no frames at all,
-    since in that case none of the three could ever succeed anyway.
+    Runs the requested formats independently -- one failing (e.g. no
+    usable video codec on this machine) doesn't stop the others from
+    being written, per the Handbook's "never lose user data" spirit:
+    partial output beats none. Only raises if the project has no frames
+    at all, or nothing was actually requested, since in either case
+    nothing could ever succeed.
 
     Args:
-        project: The active project.
+        request: Which formats to run and their per-format settings.
         event_bus: The event bus each successful format's *_EXPORTED
             event is published on.
 
@@ -330,19 +387,44 @@ def export_all(project: Project, event_bus: EventBus) -> ExportResult:
 
     Raises:
         ExportServiceError: If the project has no project_path or no
-            frames.
+            frames, or the request has no formats checked at all.
     """
+    project = request.project
     _require_frames(project)
+    if not (request.want_video or request.want_image_sequence or request.want_gif):
+        raise ExportServiceError("No export formats were selected.")
+
     basename = _export_basename(project)
 
+    jobs: list[tuple[str, Callable[[], Path]]] = []
+    if request.want_video:
+        jobs.append(
+            (
+                "video",
+                lambda: export_video(
+                    project, event_bus, basename, codec=request.video_codec
+                ),
+            )
+        )
+    if request.want_image_sequence:
+        jobs.append(
+            (
+                "image_sequence",
+                lambda: export_image_sequence(project, event_bus, basename),
+            )
+        )
+    if request.want_gif:
+        jobs.append(
+            (
+                "gif",
+                lambda: export_gif(project, event_bus, basename, fps=request.gif_fps),
+            )
+        )
+
     result = ExportResult()
-    for key, export_func in (
-        ("video", export_video),
-        ("image_sequence", export_image_sequence),
-        ("gif", export_gif),
-    ):
+    for key, job in jobs:
         try:
-            result.succeeded[key] = export_func(project, event_bus, basename)
+            result.succeeded[key] = job()
         except ExportServiceError as exc:
             logger.error("%s export failed: %s", key, exc)
             result.failed[key] = str(exc)
