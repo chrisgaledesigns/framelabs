@@ -17,6 +17,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "default_fps": 12,
+    "blender_executable_path": None,
     "autosave_interval_seconds": 30,
     "max_autosaves_kept": 20,
     "max_undo_history": 100,
