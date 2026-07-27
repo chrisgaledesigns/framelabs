@@ -36,6 +36,7 @@ from framelabs.timeline.onion_skin import OnionSkinSettings
 from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
 from framelabs.ui.autosave_controller import AutosaveController
+from framelabs.ui.blender_controller import BlenderBridgeController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.export_controller import ExportController
@@ -77,9 +78,11 @@ class MainWindow(QMainWindow):
         self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
         # Feature 12. Constructed the same self-contained way as EventBus/
-        # UndoManager above -- no other module needs shared access to
-        # Config yet, so there's no reason to move construction up into
-        # app/main.py until something else actually needs it.
+        # UndoManager above. Also shared with BlenderBridgeController,
+        # which persists a located Blender executable path here (see
+        # _start_blender_controller()) -- still no reason to move
+        # construction up into app/main.py, since MainWindow already
+        # owns it and hands it to whatever needs it.
         self.config = Config()
         # Feature 9. Duplicate/Delete/Marker/Notes commands run
         # synchronously on the main thread (see _duplicate_frame's
@@ -104,6 +107,7 @@ class MainWindow(QMainWindow):
         self._start_playback_controller()
         self._start_autosave_controller()
         self._start_export_controller()
+        self._start_blender_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
@@ -180,9 +184,7 @@ class MainWindow(QMainWindow):
 
         self.blender_action = QAction("Open in Blender", self)
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
-        self.blender_action.triggered.connect(
-            lambda: logger.info("Open in Blender clicked")
-        )
+        self.blender_action.triggered.connect(self._on_open_in_blender)
 
         self.previous_frame_action = QAction("Previous Frame", self)
         self.previous_frame_action.setShortcuts(self._shortcuts("previous_frame"))
@@ -476,6 +478,28 @@ class MainWindow(QMainWindow):
         self.export_controller.export_failed.connect(self._on_export_failed)
 
         self._export_thread.start()
+
+    def _start_blender_controller(self) -> None:
+        """Create the Blender bridge worker thread and wire its signals.
+
+        A NINTH separate thread -- building the manifest/scene script and
+        launching a real Blender process shouldn't contend with any of
+        the other eight, same "UI Never Blocks" reasoning as every other
+        _start_x_controller() method above.
+        """
+        self._blender_thread = QThread(self)
+        self.blender_controller = BlenderBridgeController(self.config)
+        self.blender_controller.moveToThread(self._blender_thread)
+
+        self.blender_controller.bridge_succeeded.connect(
+            self._on_blender_bridge_succeeded
+        )
+        self.blender_controller.bridge_failed.connect(self._on_blender_bridge_failed)
+        self.blender_controller.executable_not_found.connect(
+            self._on_blender_executable_not_found
+        )
+
+        self._blender_thread.start()
 
     def _on_autosave_timer_tick(self) -> None:
         """Fire one periodic autosave, per Feature 8's "every 30 seconds".
@@ -869,6 +893,60 @@ class MainWindow(QMainWindow):
         """Report a total export failure (e.g. no frames to export)."""
         self.export_render_action.setEnabled(True)
         QMessageBox.warning(self, "Export Failed", message)
+
+    def _on_open_in_blender(self) -> None:
+        """Feature 10: kick off the full manifest -> script -> launch
+        pipeline on BlenderBridgeController's worker thread.
+
+        Disables the menu action for the duration, same pattern as
+        _on_export_render() -- re-enabled in every one of the
+        controller's three possible outcomes (succeeded/failed/
+        executable-not-found).
+        """
+        if self.project is None or self.project.project_path is None:
+            return
+        self.blender_action.setEnabled(False)
+        self.blender_controller.bridge_requested.emit(self.project)
+
+    def _on_blender_bridge_succeeded(self, blend_output_path: str) -> None:
+        """Blender was launched successfully and told to save its scene
+        to blend_output_path. Blender opens its own window directly --
+        this app has no further "Open Scene" step of its own to perform,
+        so this is log-only plus re-enabling the action, deliberately no
+        dialog (would just be an extra click in front of the Blender
+        window that's already opening).
+        """
+        self.blender_action.setEnabled(True)
+        logger.info("Blender launched, scene will be saved to %s", blend_output_path)
+
+    def _on_blender_bridge_failed(self, message: str) -> None:
+        """Report a Blender bridge failure that isn't the specific
+        "no executable found" case (see _on_blender_executable_not_found
+        for that one)."""
+        self.blender_action.setEnabled(True)
+        QMessageBox.warning(self, "Open in Blender Failed", message)
+
+    def _on_blender_executable_not_found(self) -> None:
+        """Feature Spec's named failure case: prompt for "Locate Blender
+        Executable" and remember the choice, rather than just showing a
+        plain error like _on_blender_bridge_failed() does.
+
+        Deliberately does not automatically retry the bridge after a
+        path is chosen -- the project/frame data that prompted this
+        attempt is not re-sent, keeping this handler simple. The user
+        clicks "Open in Blender" again once a real executable is
+        remembered.
+        """
+        self.blender_action.setEnabled(True)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Locate Blender Executable")
+        if not file_path:
+            return
+        self.blender_controller.locate_executable_requested.emit(file_path)
+        QMessageBox.information(
+            self,
+            "Blender Executable Remembered",
+            'Click "Open in Blender" again to continue.',
+        )
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",
@@ -1741,7 +1819,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all eight worker threads down cleanly before closing.
+        """Shut all nine worker threads down cleanly before closing.
 
         Sets self._shutting_down = True FIRST, before touching any thread.
         This closes a real race: PlaybackController.playhead_advanced is a
@@ -1809,5 +1887,9 @@ class MainWindow(QMainWindow):
         self._export_thread.finished.connect(self.export_controller.deleteLater)
         self._export_thread.quit()
         self._export_thread.wait(2000)
+
+        self._blender_thread.finished.connect(self.blender_controller.deleteLater)
+        self._blender_thread.quit()
+        self._blender_thread.wait(2000)
 
         super().closeEvent(event)

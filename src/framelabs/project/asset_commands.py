@@ -92,7 +92,7 @@ class AddAssetCommand(Command):
         """
         if self._relative_path is None:
             raise RuntimeError(
-                "AddAssetCommand.undo() called before do() -- nothing to " "undo yet."
+                "AddAssetCommand.undo() called before do() -- nothing to undo yet."
             )
         remove_asset(self._project, self._event_bus, self._kind, self._relative_path)
 
@@ -161,8 +161,7 @@ class RemoveAssetCommand(Command):
         """
         if self._backup_dir is None:
             raise RuntimeError(
-                "RemoveAssetCommand.undo() called before do() -- nothing to "
-                "undo yet."
+                "RemoveAssetCommand.undo() called before do() -- nothing to undo yet."
             )
         real_path = self._project.project_path / self._relative_path
         real_path.parent.mkdir(parents=True, exist_ok=True)

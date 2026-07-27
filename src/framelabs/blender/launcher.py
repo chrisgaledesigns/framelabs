@@ -44,6 +44,19 @@ class BlenderLaunchError(Exception):
     fails."""
 
 
+class BlenderExecutableNotFoundError(BlenderLaunchError):
+    """Raised specifically when neither a remembered path nor the
+    per-OS auto-detect search found a real Blender executable.
+
+    A BlenderLaunchError subtype, not a separate exception -- existing
+    `except BlenderLaunchError` handling still catches this. Split out
+    so callers (e.g. the UI layer) that specifically want to prompt for
+    "Locate Blender Executable" (the Feature Spec's named failure case)
+    can distinguish that from every other kind of launch failure
+    (e.g. Popen itself failing) without parsing the error message.
+    """
+
+
 def _search_paths() -> tuple[str, ...]:
     """Common install paths to check for the current OS."""
     system = platform.system()
@@ -112,7 +125,7 @@ class BlenderLauncher:
         if detected is not None:
             return detected
 
-        raise BlenderLaunchError(
+        raise BlenderExecutableNotFoundError(
             "No Blender executable found. Locate it manually to continue."
         )
 
