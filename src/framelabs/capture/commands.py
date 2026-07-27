@@ -251,8 +251,7 @@ class DeleteFrameCommand(Command):
         """
         if self._backup_dir is None:
             raise RuntimeError(
-                "DeleteFrameCommand.undo() called before do() -- nothing to "
-                "undo yet."
+                "DeleteFrameCommand.undo() called before do() -- nothing to undo yet."
             )
         _restore_frame_files(self._project, self._frame_number, self._backup_dir)
 
@@ -367,8 +366,7 @@ class ReplaceFrameCommand(Command):
         """
         if self._old_backup_dir is None:
             raise RuntimeError(
-                "ReplaceFrameCommand.undo() called before do() -- nothing to "
-                "undo yet."
+                "ReplaceFrameCommand.undo() called before do() -- nothing to undo yet."
             )
         _restore_frame_files(self._project, self._frame_number, self._old_backup_dir)
         ProjectSerializer.save(self._project)

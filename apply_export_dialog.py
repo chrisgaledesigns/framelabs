@@ -9,14 +9,14 @@ PATH = Path("src/framelabs/ui/main_window.py")
 
 PATCHES = [
     (
-        'from framelabs.ui.export_controller import ExportController\n'
-        'from framelabs.ui.inspector_panel import InspectorPanel',
-        'from framelabs.ui.export_controller import ExportController\n'
-        'from framelabs.ui.export_dialog import ExportDialog\n'
-        'from framelabs.ui.inspector_panel import InspectorPanel',
+        "from framelabs.ui.export_controller import ExportController\n"
+        "from framelabs.ui.inspector_panel import InspectorPanel",
+        "from framelabs.ui.export_controller import ExportController\n"
+        "from framelabs.ui.export_dialog import ExportDialog\n"
+        "from framelabs.ui.inspector_panel import InspectorPanel",
     ),
     (
-        '        self.export_render_action = QAction("Export Video, Sequence && GIF...", self)',
+        '        self.export_render_action = QAction("Export Video, Sequence && GIF...", self)',  # noqa: E501
         '        self.export_render_action = QAction("Export...", self)',
     ),
     (
@@ -62,7 +62,8 @@ for old, new in PATCHES:
     count = text.count(old)
     if count != 1:
         raise SystemExit(
-            f"ABORTING, no changes written: expected 1 match, found {count} for:\n{old[:80]}..."
+            "ABORTING, no changes written: expected 1 match, "
+            f"found {count} for:\n{old[:80]}..."
         )
 
 for old, new in PATCHES:
