@@ -53,6 +53,10 @@ class BlenderManifest:
             Settings should render into -- kept as a sibling of the
             .blend file under exports/render/, separate from the .blend
             itself so a render pass never overwrites project.blend.
+        project_version: The project file's schema version
+            (Project.version), stamped onto the generated scene as
+            metadata so a .blend can be traced back to the project.ffproj
+            version it was exported from.
     """
 
     project_name: str
@@ -62,6 +66,7 @@ class BlenderManifest:
     frame_paths: list[str]
     blend_output_path: str
     render_output_dir: str
+    project_version: int
 
 
 def parse_focal_length_mm(
@@ -137,6 +142,7 @@ def build_manifest(project: Project) -> BlenderManifest:
         frame_paths=frame_paths,
         blend_output_path=str(blend_output_path),
         render_output_dir=str(render_output_dir),
+        project_version=project.version,
     )
 
 

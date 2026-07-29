@@ -17,6 +17,7 @@ def _make_manifest(**overrides) -> BlenderManifest:
         frame_paths=["/proj/images/000001.png", "/proj/images/000002.png"],
         blend_output_path="/proj/exports/Robot Walk Cycle.blend",
         render_output_dir="/proj/exports/render",
+        project_version=1,
     )
     defaults.update(overrides)
     return BlenderManifest(**defaults)
@@ -120,6 +121,44 @@ class TestGenerateSceneScript:
         output_index = script.index("scene.render.image_settings.file_format")
         save_index = script.index("bpy.ops.wm.save_as_mainfile")
         assert compositor_index < output_index < save_index
+
+    def test_embeds_project_name(self):
+        script = generate_scene_script(_make_manifest(project_name="My Film"))
+        assert 'PROJECT_NAME = "My Film"' in script
+
+    def test_embeds_project_version(self):
+        script = generate_scene_script(_make_manifest(project_version=2))
+        assert "PROJECT_VERSION = 2" in script
+
+    def test_stamps_export_source_marker(self):
+        script = generate_scene_script(_make_manifest())
+        assert 'scene["framelabs_export_source"] = "FrameLabs"' in script
+
+    def test_stamps_project_name_and_version_as_custom_properties(self):
+        script = generate_scene_script(_make_manifest())
+        assert 'scene["framelabs_project_name"] = PROJECT_NAME' in script
+        assert 'scene["framelabs_project_version"] = PROJECT_VERSION' in script
+
+    def test_stamps_frame_count_as_custom_property(self):
+        script = generate_scene_script(_make_manifest())
+        assert 'scene["framelabs_frame_count"] = len(FRAME_PATHS)' in script
+
+    def test_metadata_stamped_before_output_settings(self):
+        # Not functionally required, but keeps the generated script
+        # readable: project identity first, then the scene is built up
+        # around it.
+        script = generate_scene_script(_make_manifest())
+        metadata_index = script.index('scene["framelabs_export_source"]')
+        output_index = script.index("scene.render.image_settings.file_format")
+        assert metadata_index < output_index
+
+    def test_metadata_survives_empty_frame_paths(self):
+        # Metadata stamping isn't guarded by `if FRAME_PATHS:` -- it
+        # should always run, even for an empty project (frame_count = 0
+        # is still valid, meaningful metadata).
+        script = generate_scene_script(_make_manifest(frame_paths=[]))
+        compile(script, "<generated_scene_script>", "exec")
+        assert 'scene["framelabs_frame_count"] = len(FRAME_PATHS)' in script
 
     def test_background_image_setup_guarded_by_frame_paths_check(self):
         # This module generates *text*; the runtime guard is an `if
