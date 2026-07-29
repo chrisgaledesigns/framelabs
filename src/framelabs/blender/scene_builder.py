@@ -140,7 +140,7 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
         "    if FRAME_PATHS:",
         "        if scene.sequence_editor is None:",
         "            scene.sequence_editor_create()",
-        "        strip = scene.sequence_editor.sequences.new_image(",
+        "        strip = scene.sequence_editor.strips.new_image(",
         '            name="FrameLabs Sequence",',
         "            filepath=FRAME_PATHS[0],",
         "            channel=1,",

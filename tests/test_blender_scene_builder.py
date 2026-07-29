@@ -49,6 +49,17 @@ class TestGenerateSceneScript:
         )
         assert "/proj/exports/My Film.blend" in script
 
+    def test_vse_uses_strips_not_sequences_attribute(self):
+        # Blender 4.4+ renamed bpy.types.Sequence -> bpy.types.Strip and
+        # SequenceEditor.sequences -> SequenceEditor.strips as a breaking
+        # Python API change. Using the old `.sequences` attribute raises
+        # AttributeError at runtime in any Blender this old code was
+        # actually tested against (5.2) -- pinned here so this can't
+        # silently regress back to the pre-4.4 name.
+        script = generate_scene_script(_make_manifest())
+        assert "scene.sequence_editor.strips.new_image(" in script
+        assert "scene.sequence_editor.sequences.new_image(" not in script
+
     def test_embeds_every_frame_path_in_order(self):
         frame_paths = [
             "/proj/images/000001.png",
