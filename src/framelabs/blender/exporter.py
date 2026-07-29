@@ -49,6 +49,10 @@ class BlenderManifest:
             own process with no guaranteed cwd relationship to the
             project folder.
         blend_output_path: Absolute path the .blend should be saved to.
+        render_output_dir: Absolute path to the folder Blender's Output
+            Settings should render into -- kept as a sibling of the
+            .blend file under exports/render/, separate from the .blend
+            itself so a render pass never overwrites project.blend.
     """
 
     project_name: str
@@ -57,6 +61,7 @@ class BlenderManifest:
     focal_length_mm: float
     frame_paths: list[str]
     blend_output_path: str
+    render_output_dir: str
 
 
 def parse_focal_length_mm(
@@ -122,6 +127,7 @@ def build_manifest(project: Project) -> BlenderManifest:
         raise BlenderExportError("Project has no frames to export.")
 
     blend_output_path = project.project_path / "exports" / f"{project.name}.blend"
+    render_output_dir = project.project_path / "exports" / "render"
 
     return BlenderManifest(
         project_name=project.name,
@@ -130,6 +136,7 @@ def build_manifest(project: Project) -> BlenderManifest:
         focal_length_mm=parse_focal_length_mm(project.camera_lens),
         frame_paths=frame_paths,
         blend_output_path=str(blend_output_path),
+        render_output_dir=str(render_output_dir),
     )
 
 
