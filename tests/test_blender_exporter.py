@@ -111,6 +111,20 @@ class TestBuildManifest:
         manifest = build_manifest(project)
         assert manifest.blend_output_path.endswith("Test Project.blend")
 
+    def test_render_output_dir_is_sibling_of_blend_file(self, tmp_path):
+        frames = [Frame(number=1, file="images/000001.png")]
+        project = _make_project(tmp_path, frames=frames)
+        manifest = build_manifest(project)
+        assert manifest.render_output_dir == str(
+            project.project_path / "exports" / "render"
+        )
+
+    def test_render_output_dir_absolute(self, tmp_path):
+        frames = [Frame(number=1, file="images/000001.png")]
+        project = _make_project(tmp_path, frames=frames)
+        manifest = build_manifest(project)
+        assert Path_is_absolute(manifest.render_output_dir)
+
 
 class TestWriteManifest:
     def test_writes_valid_json_under_cache_blender(self, tmp_path):

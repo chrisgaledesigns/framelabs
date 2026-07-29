@@ -16,6 +16,7 @@ def _make_manifest(**overrides) -> BlenderManifest:
         focal_length_mm=50.0,
         frame_paths=["/proj/images/000001.png", "/proj/images/000002.png"],
         blend_output_path="/proj/exports/Robot Walk Cycle.blend",
+        render_output_dir="/proj/exports/render",
     )
     defaults.update(overrides)
     return BlenderManifest(**defaults)
@@ -88,6 +89,37 @@ class TestGenerateSceneScript:
         # auto-advances it alongside the VSE strip and the scene's
         # own playhead.
         assert 'bg_image.source = "SEQUENCE"' in script
+
+    def test_embeds_render_output_dir(self):
+        script = generate_scene_script(
+            _make_manifest(render_output_dir="/proj/exports/render")
+        )
+        assert 'RENDER_OUTPUT_DIR = "/proj/exports/render"' in script
+
+    def test_sets_png_output_format(self):
+        script = generate_scene_script(_make_manifest())
+        assert 'scene.render.image_settings.file_format = "PNG"' in script
+
+    def test_sets_render_filepath_from_output_dir(self):
+        script = generate_scene_script(_make_manifest())
+        assert "scene.render.filepath = os.path.join(RENDER_OUTPUT_DIR" in script
+
+    def test_creates_render_output_dir(self):
+        # Blender doesn't require the render output folder to exist
+        # ahead of time, but creating it up front means the folder shows
+        # up (and is browsable) even before the user actually renders.
+        script = generate_scene_script(_make_manifest())
+        assert "os.makedirs(RENDER_OUTPUT_DIR, exist_ok=True)" in script
+
+    def test_output_settings_configured_after_compositor(self):
+        # Order matters for readability/debugging in the generated
+        # script, even though none of these lines are functionally
+        # order-dependent on each other.
+        script = generate_scene_script(_make_manifest())
+        compositor_index = script.index("scene.use_nodes = True")
+        output_index = script.index("scene.render.image_settings.file_format")
+        save_index = script.index("bpy.ops.wm.save_as_mainfile")
+        assert compositor_index < output_index < save_index
 
     def test_background_image_setup_guarded_by_frame_paths_check(self):
         # This module generates *text*; the runtime guard is an `if
