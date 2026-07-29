@@ -116,6 +116,41 @@ class TestBridgeRequestedFailurePaths:
         assert "boom" in blocker.args[0]
 
 
+class TestAlreadyRunning:
+    def test_running_instance_emits_already_running_not_bridge(
+        self, qtbot, config, project
+    ):
+        controller = BlenderBridgeController(config)
+        with patch.object(
+            controller._launcher, "has_running_instance", return_value=True
+        ):
+            with patch.object(controller._launcher, "launch") as mock_launch:
+                with qtbot.waitSignal(controller.already_running, timeout=1000):
+                    controller.bridge_requested.emit(project)
+                mock_launch.assert_not_called()
+
+    def test_no_running_instance_launches_normally(self, qtbot, config, project):
+        controller = BlenderBridgeController(config)
+        with patch.object(
+            controller._launcher, "has_running_instance", return_value=False
+        ):
+            with patch.object(controller._launcher, "launch", return_value=MagicMock()):
+                with qtbot.waitSignal(controller.bridge_succeeded, timeout=1000):
+                    controller.bridge_requested.emit(project)
+
+    def test_force_new_instance_bypasses_running_check(self, qtbot, config, project):
+        controller = BlenderBridgeController(config)
+        with patch.object(
+            controller._launcher, "has_running_instance", return_value=True
+        ):
+            with patch.object(
+                controller._launcher, "launch", return_value=MagicMock()
+            ) as mock_launch:
+                with qtbot.waitSignal(controller.bridge_succeeded, timeout=1000):
+                    controller.force_new_instance_requested.emit(project)
+                mock_launch.assert_called_once()
+
+
 class TestLocateExecutableRequested:
     def test_remembers_valid_path(self, qtbot, config, tmp_path):
         fake_blender = tmp_path / "blender.exe"
