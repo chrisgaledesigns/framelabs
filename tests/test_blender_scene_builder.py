@@ -79,6 +79,26 @@ class TestGenerateSceneScript:
         )
         compile(script, "<generated_scene_script>", "exec")
 
+    def test_sets_up_camera_background_image_at_half_opacity(self):
+        script = generate_scene_script(_make_manifest())
+        assert "camera_obj.data.show_background_images = True" in script
+        assert "camera_obj.data.background_images.new()" in script
+        assert "background.alpha = 0.5" in script
+        # Loaded as a SEQUENCE, not a single still frame, so Blender
+        # auto-advances it alongside the VSE strip and the scene's
+        # own playhead.
+        assert 'bg_image.source = "SEQUENCE"' in script
+
+    def test_background_image_setup_guarded_by_frame_paths_check(self):
+        # This module generates *text*; the runtime guard is an `if
+        # FRAME_PATHS:` inside the generated script, not an omission
+        # from the text itself for an empty manifest. Confirm the guard
+        # exists so an empty project can't crash bpy.data.images.load()
+        # on FRAME_PATHS[0] at runtime.
+        script = generate_scene_script(_make_manifest(frame_paths=[]))
+        compile(script, "<generated_scene_script>", "exec")
+        assert "if FRAME_PATHS:\n        bg_image = bpy.data.images.load" in script
+
 
 class TestWriteSceneScript:
     def test_writes_file_with_expected_name(self, tmp_path):
