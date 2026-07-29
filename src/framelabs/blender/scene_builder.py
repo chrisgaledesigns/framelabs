@@ -40,6 +40,8 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
             - clears the default startup scene
             - sets fps, resolution, and the frame range
             - creates a camera with the manifest's focal length
+            - loads the frame sequence as a camera background image at
+              50% opacity, visible through the camera view
             - imports every frame as a Video Sequence Editor image
               sequence, in Timeline order
             - enables the compositor (use_nodes)
@@ -91,6 +93,24 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
         '    camera_obj.name = "FrameLabs Camera"',
         "    camera_obj.data.lens = FOCAL_LENGTH_MM",
         "    scene.camera = camera_obj",
+        "",
+        "    # --- Camera background image ---",
+        "    # Loads the same frame sequence as a camera background image at",
+        "    # 50% opacity, visible through the camera view while animating --",
+        "    # this is separate from the VSE strip below (Blender's Background",
+        "    # Images system, not the sequencer), and is what makes the",
+        "    # captured reference footage actually show up behind whatever is",
+        "    # built in the scene.",
+        "    if FRAME_PATHS:",
+        "        bg_image = bpy.data.images.load(FRAME_PATHS[0])",
+        '        bg_image.source = "SEQUENCE"',
+        "        camera_obj.data.show_background_images = True",
+        "        background = camera_obj.data.background_images.new()",
+        "        background.image = bg_image",
+        "        background.alpha = 0.5",
+        "        background.image_user.frame_start = 1",
+        "        background.image_user.frame_duration = len(FRAME_PATHS)",
+        "        background.image_user.use_auto_refresh = True",
         "",
         "    # --- Image sequence (Video Sequence Editor) ---",
         "    # Timeline order is guaranteed by exporter.py's",
