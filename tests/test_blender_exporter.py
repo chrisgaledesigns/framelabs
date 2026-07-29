@@ -125,6 +125,13 @@ class TestBuildManifest:
         manifest = build_manifest(project)
         assert Path_is_absolute(manifest.render_output_dir)
 
+    def test_project_version_copied_from_project(self, tmp_path):
+        frames = [Frame(number=1, file="images/000001.png")]
+        project = _make_project(tmp_path, frames=frames)
+        project.version = 3
+        manifest = build_manifest(project)
+        assert manifest.project_version == 3
+
 
 class TestWriteManifest:
     def test_writes_valid_json_under_cache_blender(self, tmp_path):
