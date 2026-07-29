@@ -498,6 +498,9 @@ class MainWindow(QMainWindow):
         self.blender_controller.executable_not_found.connect(
             self._on_blender_executable_not_found
         )
+        self.blender_controller.already_running.connect(
+            self._on_blender_already_running
+        )
 
         self._blender_thread.start()
 
@@ -900,8 +903,8 @@ class MainWindow(QMainWindow):
 
         Disables the menu action for the duration, same pattern as
         _on_export_render() -- re-enabled in every one of the
-        controller's three possible outcomes (succeeded/failed/
-        executable-not-found).
+        controller's four possible outcomes (succeeded/failed/
+        executable-not-found/already-running).
         """
         if self.project is None or self.project.project_path is None:
             return
@@ -947,6 +950,45 @@ class MainWindow(QMainWindow):
             "Blender Executable Remembered",
             'Click "Open in Blender" again to continue.',
         )
+
+    def _on_blender_already_running(self) -> None:
+        """Feature Spec's named failure case: a FrameLabs-launched
+        Blender instance from earlier this session is still running.
+        Offers the spec's "Reuse Existing Blender" / "Open New Instance"
+        choice instead of silently launching a second process.
+
+        "Reuse" (and Cancel) leave the existing window untouched -- see
+        BlenderLauncher.launch()'s docstring for why FrameLabs cannot
+        actually inject the new scene into it, only choose not to open
+        a second one. "Open New Instance" re-sends the current project
+        on force_new_instance_requested, which skips the running-instance
+        check entirely.
+        """
+        self.blender_action.setEnabled(True)
+        box = QMessageBox(self)
+        box.setWindowTitle("Blender Already Running")
+        box.setText(
+            "A Blender window opened by FrameLabs is already running.\n\n"
+            "Reusing it leaves that window alone -- FrameLabs can't send "
+            "the new scene into an already-open Blender. Opening a new "
+            "instance starts a second Blender window with this project's "
+            "scene."
+        )
+        reuse_button = box.addButton(
+            "Reuse Existing Blender", QMessageBox.ButtonRole.AcceptRole
+        )
+        new_instance_button = box.addButton(
+            "Open New Instance", QMessageBox.ButtonRole.DestructiveRole
+        )
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(reuse_button)
+        box.exec()
+
+        if box.clickedButton() is new_instance_button:
+            self.blender_action.setEnabled(False)
+            self.blender_controller.force_new_instance_requested.emit(self.project)
+        # Reuse or Cancel: leave the existing Blender window alone, no
+        # further action needed.
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",

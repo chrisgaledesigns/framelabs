@@ -60,6 +60,14 @@ class BlenderBridgeController(QObject):
     # "Locate Blender Executable" instead of a plain error dialog, per
     # the Feature Spec's named failure case.
     executable_not_found = Signal()
+    # Emitted when a FrameLabs-launched Blender instance from earlier
+    # this session is still running -- distinct from bridge_failed so
+    # MainWindow can offer the Feature Spec's named "Reuse Existing
+    # Blender" / "Open New Instance" choice instead of a plain error.
+    # Carries no payload: MainWindow already holds the Project it wants
+    # opened and re-sends it on force_new_instance_requested if the user
+    # picks "Open New Instance".
+    already_running = Signal()
 
     # Emitted from the main thread with the currently active Project as
     # its payload; connected to _handle_bridge_requested below, which --
@@ -72,6 +80,13 @@ class BlenderBridgeController(QObject):
     # in Config so future sessions never need to ask again.
     locate_executable_requested = Signal(str)
 
+    # Emitted from the main thread after the user explicitly chooses
+    # "Open New Instance" in response to already_running -- skips the
+    # has_running_instance() check entirely and launches unconditionally,
+    # since the user has already been told one is running and chose to
+    # open another anyway.
+    force_new_instance_requested = Signal(object)
+
     def __init__(self, config: Config) -> None:
         """Build the controller against the app's shared Config, so a
         located/remembered Blender executable path persists across
@@ -83,10 +98,36 @@ class BlenderBridgeController(QObject):
         self.locate_executable_requested.connect(
             self._handle_locate_executable_requested
         )
+        self.force_new_instance_requested.connect(
+            self._handle_force_new_instance_requested
+        )
 
     def _handle_bridge_requested(self, project: Project) -> None:
-        """Run the full manifest -> script -> launch pipeline. Always
-        runs on the worker thread."""
+        """Run the full manifest -> script -> launch pipeline, unless a
+        FrameLabs-launched Blender instance is already running -- per
+        the Feature Spec's "Blender already running" case, that prompts
+        MainWindow for Reuse/New Instance instead of launching a second
+        process silently. Always runs on the worker thread."""
+        if self._launcher.has_running_instance():
+            logger.info(
+                "Blender bridge: a FrameLabs-launched Blender instance is "
+                "still running; asking whether to reuse it or open a new one"
+            )
+            self.already_running.emit()
+            return
+        self._run_pipeline(project)
+
+    def _handle_force_new_instance_requested(self, project: Project) -> None:
+        """User explicitly chose "Open New Instance" after already_running
+        was raised. Skips has_running_instance() entirely -- the user has
+        already been told one is running and chose to open another
+        anyway, so asking again would just be a redundant prompt loop."""
+        self._run_pipeline(project)
+
+    def _run_pipeline(self, project: Project) -> None:
+        """The actual manifest -> script -> launch pipeline, shared by
+        both the normal path and the explicit "Open New Instance" path.
+        """
         try:
             manifest = build_manifest(project)
             write_manifest(project)
