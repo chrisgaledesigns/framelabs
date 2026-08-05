@@ -15,12 +15,21 @@ logger = get_logger("core.config")
 CONFIG_DIR = Path.home() / ".framelabs"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+# Caps the Welcome dialog's Recent Projects list -- without a cap, a
+# project opened once early on would keep the file growing forever.
+MAX_RECENT_PROJECTS = 10
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "default_fps": 12,
     "blender_executable_path": None,
     "autosave_interval_seconds": 30,
     "max_autosaves_kept": 20,
     "max_undo_history": 100,
+    # List of {"path": str, "name": str}, most-recently-opened first.
+    # Read by the startup Welcome dialog; written by
+    # MainWindow._adopt_project() whenever a project is created or
+    # opened.
+    "recent_projects": [],
     "keyboard_shortcuts": {
         "capture": "Space",
         "save": "Ctrl+S",
@@ -98,6 +107,43 @@ class Config:
         """Set a setting value by key. Does not save automatically."""
         self._settings[key] = value
         logger.info("Config setting changed: %s = %s", key, value)
+
+    def get_recent_projects(self) -> list[dict[str, str]]:
+        """Return recent projects, most-recently-opened first.
+
+        Entries whose folder no longer exists on disk (moved, deleted,
+        on an unmounted drive) are dropped -- the Welcome dialog's
+        Recent Projects list should never offer a project that would
+        just fail to load. If any were dropped, the pruned list is
+        saved immediately so the stale entries don't keep resurfacing
+        on every launch.
+        """
+        entries = self._settings.get("recent_projects", [])
+        kept = [entry for entry in entries if Path(entry.get("path", "")).is_dir()]
+
+        if len(kept) != len(entries):
+            self._settings["recent_projects"] = kept
+            self.save()
+
+        return kept
+
+    def add_recent_project(self, project_path: Path, name: str) -> None:
+        """Move (or add) a project to the front of the recent-projects list.
+
+        Deduplicates by path, so reopening an already-recent project
+        moves it to the top instead of creating a second entry. Trimmed
+        to MAX_RECENT_PROJECTS. Does not call save() itself -- callers
+        persist alongside whatever else they're already saving (see
+        MainWindow._adopt_project).
+        """
+        path_str = str(project_path)
+        entries = [
+            entry
+            for entry in self._settings.get("recent_projects", [])
+            if entry.get("path") != path_str
+        ]
+        entries.insert(0, {"path": path_str, "name": name})
+        self._settings["recent_projects"] = entries[:MAX_RECENT_PROJECTS]
 
 
 def parse_shortcut(value: str) -> list[str]:

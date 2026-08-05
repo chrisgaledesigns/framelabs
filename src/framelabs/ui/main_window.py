@@ -67,8 +67,19 @@ AUTOSAVE_INTERVAL_MS = 30000
 class MainWindow(QMainWindow):
     """FrameLabs' main window shell."""
 
-    def __init__(self) -> None:
-        """Initialize the main window."""
+    def __init__(self, config: Config | None = None) -> None:
+        """Initialize the main window.
+
+        Args:
+            config: Shared Config instance. app/main.py constructs one
+                up front and passes it in so the startup Welcome
+                dialog's Recent Projects list and MainWindow's own
+                recent-projects writes (see _adopt_project) operate on
+                the exact same config.json, instead of MainWindow
+                silently reloading a second copy from disk here. Falls
+                back to constructing its own when omitted, so
+                MainWindow remains usable standalone (e.g. from tests).
+        """
         super().__init__()
         self.setWindowTitle("FrameLabs")
         self.resize(1280, 800)
@@ -77,13 +88,10 @@ class MainWindow(QMainWindow):
         self.onion_settings = OnionSkinSettings()
         self.playback_settings = PlaybackSettings()
         self.event_bus = EventBus()
-        # Feature 12. Constructed the same self-contained way as EventBus/
-        # UndoManager above. Also shared with BlenderBridgeController,
-        # which persists a located Blender executable path here (see
-        # _start_blender_controller()) -- still no reason to move
-        # construction up into app/main.py, since MainWindow already
-        # owns it and hands it to whatever needs it.
-        self.config = Config()
+        # Feature 12. Also shared with BlenderBridgeController, which
+        # persists a located Blender executable path here (see
+        # _start_blender_controller()).
+        self.config = config if config is not None else Config()
         # Feature 9. Duplicate/Delete/Marker/Notes commands run
         # synchronously on the main thread (see _duplicate_frame's
         # docstring) -- known, flagged simplification, not an oversight.
@@ -1574,42 +1582,48 @@ class MainWindow(QMainWindow):
     def _on_new_project(self) -> None:
         """Open the New Project dialog and adopt the created project.
 
-        Per Feature 1's acceptance criteria, the window title reflects the
-        new project's name once creation succeeds. If the user cancels the
-        dialog, nothing changes. A fresh Timeline is created over the new
-        project's frames at the same time -- Timeline holds a live
-        reference to project.frames, so no further sync is needed as
-        captures happen. The Timeline strip and action bar are refreshed
-        here too, so a brand-new (empty) project correctly clears out
-        whatever a previously-open project may have left displayed.
+        If the user cancels the dialog, nothing changes. See
+        open_created_project()/_adopt_project() for what "adopt" does.
         """
         dialog = NewProjectDialog(self)
         if dialog.exec():
-            self.project = dialog.project
-            self.timeline = Timeline(self.project)
-            self.undo_manager.clear()
-            self._update_undo_redo_actions()
-            self.setWindowTitle(f"FrameLabs — {self.project.name}")
-            logger.info("Project created: %s", self.project.name)
-            self._refresh_onion_skin()
-            self._refresh_timeline_widget()
-            self._refresh_frame_action_bar()
+            self.open_created_project(dialog.project)
+
+    def open_created_project(self, project: Project) -> None:
+        """Adopt a Project that was already created elsewhere.
+
+        Used by _on_new_project (NewProjectDialog run from the File
+        menu) and by app/main.py (NewProjectDialog run from the
+        startup Welcome dialog, before MainWindow even existed) -- both
+        hand MainWindow an already-created Project, so both adopt it
+        the same way and log it the same way ("created", not "opened").
+        """
+        self._adopt_project(project, created=True)
 
     def _on_open_project(self) -> None:
-        """Open a folder picker and request a load on the worker thread.
+        """Open a folder picker and hand the chosen path to open_project_at().
 
         A project IS a folder (containing project.ffproj at its top
         level), so this picks the project folder itself -- not a parent
         folder, unlike New Project's Browse.
         """
         chosen = QFileDialog.getExistingDirectory(self, "Open Project")
-        if not chosen:
-            return
-        project_path = Path(chosen)
+        if chosen:
+            self.open_project_at(Path(chosen))
 
-        # Feature 8 crash recovery. has_recoverable_autosave() is just
-        # two stat() calls, cheap enough to run synchronously here rather
-        # than round-tripping to a worker thread first.
+    def open_project_at(self, project_path: Path) -> None:
+        """Load the project at project_path, handling autosave recovery.
+
+        Shared by _on_open_project (path chosen via a folder picker)
+        and app/main.py (path chosen from the startup Welcome dialog's
+        own Browse button or its Recent Projects list) -- both need
+        the exact same Feature 8 crash-recovery check before handing
+        off to ProjectController.
+
+        has_recoverable_autosave() is just two stat() calls, cheap
+        enough to run synchronously here rather than round-tripping to
+        a worker thread first.
+        """
         if has_recoverable_autosave(project_path):
             self._show_recovery_dialog(project_path)
         else:
@@ -1675,25 +1689,40 @@ class MainWindow(QMainWindow):
         box.setInformativeText(message)
         box.exec()
 
-    def _adopt_project(self, project: Project) -> None:
+    def _adopt_project(self, project: Project, *, created: bool = False) -> None:
         """Make project the active project and reflect it in the UI.
 
-        A fresh Timeline is created over the opened project's frames at
-        the same time -- see _on_new_project for why this needs no
-        further manual sync. The Timeline strip and action bar are
-        refreshed here too, so opening a project immediately shows its
-        real frame thumbnails rather than whatever was left over from a
-        previous project. undo_manager.clear() runs here for the same
-        reason it runs in _on_new_project: every held Command references
-        the previous Project object, so undoing one after switching
-        projects would silently act on the wrong project's files.
+        The single funnel every path that hands MainWindow a real
+        Project converges on: open_created_project() (New Project, from
+        either the File menu or the startup Welcome dialog),
+        _on_load_succeeded() (Open Project), and the autosave restore
+        path (which also emits load_succeeded -- see
+        ProjectController's docstring). A fresh Timeline is created
+        over the project's frames at the same time -- see
+        open_created_project() for why this needs no further manual
+        sync. The Timeline strip and action bar are refreshed here too,
+        so adopting a project immediately shows its real frame
+        thumbnails rather than whatever was left over from a previous
+        one. undo_manager.clear() runs here for the same reason: every
+        held Command references the previous Project object, so
+        undoing one after switching projects would silently act on the
+        wrong project's files.
+
+        Also records the project in Config's recent-projects list, so
+        it shows up in the startup Welcome dialog next launch. Skipped
+        only if project_path is somehow unset -- shouldn't happen in
+        practice, since every Project reaching this method has already
+        been created on disk or loaded from disk.
         """
         self.project = project
         self.timeline = Timeline(project)
         self.undo_manager.clear()
         self._update_undo_redo_actions()
         self.setWindowTitle(f"FrameLabs — {project.name}")
-        logger.info("Project opened: %s", project.name)
+        logger.info("Project %s: %s", "created" if created else "opened", project.name)
+        if project.project_path is not None:
+            self.config.add_recent_project(project.project_path, project.name)
+            self.config.save()
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
         self._refresh_frame_action_bar()
