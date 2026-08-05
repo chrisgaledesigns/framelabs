@@ -65,7 +65,7 @@ THUMBNAIL_DISPLAY_HEIGHT = 100
 MARKER_BORDER_WIDTH = 3
 MARKER_BORDER_COLOR = "#f59e0b"  # amber
 SELECTION_BORDER_WIDTH = 3
-SELECTION_BORDER_COLOR = "#3b82f6"  # accent blue
+SELECTION_BORDER_COLOR = "#00bc90"  # accent teal-green, matches theme.ACCENT
 
 # Backlog item #1: click-and-drag scrolling on the timeline strip,
 # iPad-style. A press that never moves more than this many pixels (global,
@@ -339,7 +339,7 @@ class PlaybackControls(QWidget):
         """Build the playback controls bar."""
         super().__init__()
         self.setFixedHeight(50)
-        self.setStyleSheet("border: 1px solid gray;")
+        self.setStyleSheet("border: 1px solid #1f2d38;")
 
         layout = QHBoxLayout(self)
 
@@ -383,7 +383,7 @@ class FrameActionBar(QWidget):
         """Build the bar, disabled until a frame is selected."""
         super().__init__()
         self.setFixedHeight(50)
-        self.setStyleSheet("border: 1px solid gray;")
+        self.setStyleSheet("border: 1px solid #1f2d38;")
 
         layout = QHBoxLayout(self)
 
@@ -453,7 +453,7 @@ class FrameActionBar(QWidget):
         never changes, keeps that 50px slot permanently reserved, so
         nothing above it ever moves.
         """
-        self.setStyleSheet("border: 1px solid gray;" if visible else "")
+        self.setStyleSheet("border: 1px solid #1f2d38;" if visible else "")
         for button in self._buttons:
             button.setVisible(visible)
         self.notes_edit.setVisible(visible)

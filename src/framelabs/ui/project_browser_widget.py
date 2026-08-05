@@ -149,8 +149,8 @@ class _SectionHeader(QPushButton):
         self.setFlat(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(
-            "QPushButton { text-align: left; font-weight: bold; "
-            "border: none; padding: 4px 2px; }"
+            "QPushButton { text-align: left; font-weight: 600; "
+            "font-size: 12px; border: none; padding: 10px 4px; }"
         )
         self.toggled.connect(self._update_text)
         self._update_text()
@@ -217,6 +217,7 @@ class ProjectBrowserWidget(QWidget):
     def __init__(self) -> None:
         """Build the panel's sections (initially empty/hidden)."""
         super().__init__()
+        self.setObjectName("projectBrowserWidget")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)

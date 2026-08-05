@@ -264,6 +264,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel = InspectorPanel()
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(13)
         splitter.addWidget(self.project_browser_widget)
         splitter.addWidget(self.live_view_widget)
         splitter.addWidget(self.inspector_panel)
@@ -290,7 +291,8 @@ class MainWindow(QMainWindow):
 
         central_widget = QWidget()
         central_layout = QVBoxLayout(central_widget)
-        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setContentsMargins(12, 12, 12, 0)
+        central_layout.setSpacing(10)
         central_layout.addWidget(splitter, 1)
         central_layout.addWidget(self.timeline_widget)
         central_layout.addWidget(self.frame_action_bar)

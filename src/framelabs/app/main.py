@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from framelabs.core.logger import setup_logging
 from framelabs.plugins.plugin_manager import PluginManager
 from framelabs.ui.main_window import MainWindow
+from framelabs.ui.theme import STYLESHEET
 
 
 def main() -> None:
@@ -17,6 +18,7 @@ def main() -> None:
     plugin_manager.load_plugins()
 
     app = QApplication(sys.argv)
+    app.setStyleSheet(STYLESHEET)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
