@@ -65,6 +65,7 @@ class LiveViewWidget(QGraphicsView):
         """Build the view, its scene, the pixmap item, and the (initially
         hidden) safe area guide items."""
         super().__init__()
+        self.setObjectName("liveViewWidget")
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
@@ -84,7 +85,7 @@ class LiveViewWidget(QGraphicsView):
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        self.setBackgroundBrush(QColor(30, 30, 30))
+        self.setBackgroundBrush(QColor("#05090c"))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)

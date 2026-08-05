@@ -170,7 +170,7 @@ def test_unselected_frame_has_no_selection_border_color(qtbot, tmp_path):
     )
     qtbot.addWidget(thumbnail)
 
-    assert "0px solid #3b82f6" in _all_style(thumbnail)
+    assert "0px solid #00bc90" in _all_style(thumbnail)
 
 
 def test_marked_frame_has_marker_border(qtbot, tmp_path):

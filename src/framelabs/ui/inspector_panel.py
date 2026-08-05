@@ -31,6 +31,7 @@ class InspectorPanel(QWidget):
     def __init__(self) -> None:
         """Build the Inspector's form layout."""
         super().__init__()
+        self.setObjectName("inspectorPanel")
 
         layout = QFormLayout(self)
 
