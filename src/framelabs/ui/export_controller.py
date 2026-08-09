@@ -24,6 +24,7 @@ from PySide6.QtCore import QObject, Signal
 
 from framelabs.core.event_bus import EventBus
 from framelabs.export.export_service import (
+    ExportProgress,
     ExportRequest,
     ExportResult,
     ExportServiceError,
@@ -44,6 +45,11 @@ class ExportController(QObject):
 
     export_succeeded = Signal(object)  # ExportResult
     export_failed = Signal(str)
+    # Re-emitted, unchanged, from export_all()'s on_progress callback --
+    # see _handle_export_requested. Qt's queued-connection delivery
+    # across threads is what makes this safe to connect directly to a
+    # main-thread progress bar despite firing from the worker thread.
+    export_progress = Signal(object)  # ExportProgress
 
     # Emitted from the main thread with an ExportRequest (built by
     # ui/export_dialog.py's ExportDialog) as its payload; connected to
@@ -65,7 +71,9 @@ class ExportController(QObject):
         """Run whichever formats the request asked for. Always runs on
         the worker thread."""
         try:
-            result: ExportResult = export_all(request, self.event_bus)
+            result: ExportResult = export_all(
+                request, self.event_bus, on_progress=self._on_progress
+            )
         except ExportServiceError as exc:
             logger.error("Export failed: %s", exc)
             self.export_failed.emit(str(exc))
@@ -87,3 +95,11 @@ class ExportController(QObject):
                 len(result.failed),
             )
             self.export_succeeded.emit(result)
+
+    def _on_progress(self, progress: ExportProgress) -> None:
+        """export_all()'s on_progress callback. Called synchronously on
+        the worker thread, mid-export; just re-emits as a signal so
+        MainWindow's progress bar (main thread) gets each update via
+        Qt's normal cross-thread queued-connection delivery, without this
+        controller needing to know anything about how it's displayed."""
+        self.export_progress.emit(progress)

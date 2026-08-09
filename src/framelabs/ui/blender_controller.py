@@ -87,6 +87,21 @@ class BlenderBridgeController(QObject):
     # open another anyway.
     force_new_instance_requested = Signal(object)
 
+    # "Export .blend" -- runs the same manifest -> script pipeline as
+    # "Open in Blender", but headlessly (BlenderLauncher.launch_background())
+    # rather than opening an interactive window, and waits for the real
+    # result instead of firing-and-forgetting a launch. Kept as its own
+    # signal/handler pair rather than folding into bridge_requested: the
+    # two pipelines share build_manifest()/write_manifest()/
+    # write_scene_script() but diverge at the launcher call, and
+    # MainWindow needs to tell "an interactive window is opening" apart
+    # from "a background export just finished" to re-enable the right
+    # menu action and show the right dialog.
+    export_blend_requested = Signal(object)  # Project
+    blend_export_succeeded = Signal(str)  # the real .blend path written
+    blend_export_failed = Signal(str)
+    blend_export_executable_not_found = Signal()
+
     def __init__(self, config: Config) -> None:
         """Build the controller against the app's shared Config, so a
         located/remembered Blender executable path persists across
@@ -101,6 +116,7 @@ class BlenderBridgeController(QObject):
         self.force_new_instance_requested.connect(
             self._handle_force_new_instance_requested
         )
+        self.export_blend_requested.connect(self._handle_export_blend_requested)
 
     def _handle_bridge_requested(self, project: Project) -> None:
         """Run the full manifest -> script -> launch pipeline, unless a
@@ -151,6 +167,59 @@ class BlenderBridgeController(QObject):
         else:
             logger.info("Blender launched for project: %s", manifest.blend_output_path)
             self.bridge_succeeded.emit(manifest.blend_output_path)
+
+    def _handle_export_blend_requested(self, project: Project) -> None:
+        """Build the manifest/script (same as _run_pipeline) but run
+        Blender headlessly via launch_background() and wait for the real
+        result, for "Export .blend" -- a saved, shareable .blend with no
+        interactive window opened. Always runs on the worker thread.
+
+        Unlike _run_pipeline()/launch(), this has no has_running_instance()
+        guard -- a background export is its own independent, short-lived
+        process; it neither conflicts with, nor needs to be tracked
+        alongside, a separate Open-in-Blender window the user may already
+        have running.
+        """
+        try:
+            manifest = build_manifest(project)
+            write_manifest(project)
+            script_dir = project.project_path / "cache" / "blender"
+            script_path = write_scene_script(manifest, script_dir)
+            result = self._launcher.launch_background(script_path)
+        except BlenderExecutableNotFoundError:
+            logger.error("Blend export failed: no Blender executable found")
+            self.blend_export_executable_not_found.emit()
+        except (BlenderExportError, BlenderLaunchError) as exc:
+            logger.error("Blend export failed: %s", exc)
+            self.blend_export_failed.emit(str(exc))
+        except Exception as exc:
+            # Defense in depth, same reasoning as _run_pipeline()'s own
+            # catch-all.
+            logger.exception("Blend export failed with an unexpected error")
+            self.blend_export_failed.emit(str(exc))
+        else:
+            if result.returncode != 0:
+                # A non-zero exit here means the generated script raised
+                # inside Blender's own Python -- exactly the class of bug
+                # the project hand-off flags as invisible to both the
+                # unit test suite (never imports bpy) and the interactive
+                # "Open in Blender" path (a crashed --python script still
+                # leaves an open, seemingly-fine Blender window behind).
+                # --background mode surfaces it directly via a real exit
+                # code, so log the captured stderr in full for
+                # reproducing the failure.
+                logger.error(
+                    "Blend export: Blender exited with code %d.\nstderr:\n%s",
+                    result.returncode,
+                    result.stderr,
+                )
+                self.blend_export_failed.emit(
+                    f"Blender exited with an error (code {result.returncode}). "
+                    "See the FrameLabs log for the full traceback."
+                )
+                return
+            logger.info("Blend exported: %s", manifest.blend_output_path)
+            self.blend_export_succeeded.emit(manifest.blend_output_path)
 
     def _handle_locate_executable_requested(self, path: str) -> None:
         """Remember a user-located Blender executable. Always runs on

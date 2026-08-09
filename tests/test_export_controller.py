@@ -15,7 +15,11 @@ import cv2
 import numpy as np
 
 from framelabs.core.event_bus import EventBus
-from framelabs.export.export_service import ExportRequest, ExportServiceError
+from framelabs.export.export_service import (
+    ExportProgress,
+    ExportRequest,
+    ExportServiceError,
+)
 from framelabs.project.creator import create_new_project
 from framelabs.project.project import Frame
 from framelabs.ui.export_controller import ExportController
@@ -178,3 +182,27 @@ def test_handle_export_requested_partial_failure_still_emits_succeeded(
     result = succeeded_slot.call_args.args[0]
     assert result.failed == {"video": "simulated codec failure"}
     assert set(result.succeeded) == {"image_sequence", "gif"}
+
+
+def test_handle_export_requested_emits_progress_updates(tmp_path):
+    """export_all()'s on_progress callback should be re-emitted as the
+    export_progress signal -- MainWindow's progress dialog has no other
+    way to hear about mid-export frame counts."""
+    controller = ExportController(EventBus())
+    request = _make_request(
+        _make_project(tmp_path, frame_count=3),
+        want_video=False,
+        want_image_sequence=True,
+        want_gif=False,
+    )
+
+    progress_slot = MagicMock()
+    controller.export_progress.connect(progress_slot)
+
+    controller._handle_export_requested(request)
+
+    assert progress_slot.call_count == 3
+    updates = [call.args[0] for call in progress_slot.call_args_list]
+    assert [u.current for u in updates] == [1, 2, 3]
+    assert all(isinstance(u, ExportProgress) for u in updates)
+    assert all(u.format_key == "image_sequence" for u in updates)

@@ -50,6 +50,30 @@ class ExportServiceError(Exception):
 
 
 @dataclass
+class ExportProgress:
+    """A single progress update for one in-progress export format.
+
+    Attributes:
+        format_key: Which format this update is for ("video",
+            "image_sequence", or "gif") -- matches ExportResult's keys,
+            so a caller tracking multiple formats can tell them apart.
+        current: Frames processed so far (1-indexed).
+        total: Total frames in the export.
+    """
+
+    format_key: str
+    current: int
+    total: int
+
+
+# Called with an ExportProgress after each frame is processed. None (the
+# default everywhere below) means "no one is listening" -- every
+# export_*() function already works standalone with no progress reporting
+# at all, so this is purely additive and never required.
+ProgressCallback = Callable[[ExportProgress], None]
+
+
+@dataclass
 class ExportResult:
     """Outcome of an export_all() call.
 
@@ -149,7 +173,11 @@ def _exports_dir(project: Project) -> Path:
 
 
 def export_video(
-    project: Project, event_bus: EventBus, basename: str, codec: str = "auto"
+    project: Project,
+    event_bus: EventBus,
+    basename: str,
+    codec: str = "auto",
+    on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Render every frame, in Timeline order, to an MP4 at project.fps.
 
@@ -171,6 +199,8 @@ def export_video(
         basename: Shared base filename, no extension (see
             _export_basename()).
         codec: "auto", or an explicit FourCC ("avc1"/"mp4v").
+        on_progress: Called with an ExportProgress after each frame is
+            written. Optional -- see ProgressCallback.
 
     Returns:
         The real path of the written .mp4 file.
@@ -209,14 +239,17 @@ def export_video(
             f"export (tried: {', '.join(fourcc_codes)})."
         )
 
+    total = len(frames)
     try:
-        for frame in frames:
+        for index, frame in enumerate(frames, start=1):
             image = cv2.imread(str(project.project_path / frame.file))
             if image is None:
                 raise ExportServiceError(f"Could not read frame image: {frame.file}")
             if (image.shape[1], image.shape[0]) != (width, height):
                 image = cv2.resize(image, (width, height))
             writer.write(image)
+            if on_progress is not None:
+                on_progress(ExportProgress("video", index, total))
     except ExportServiceError:
         raise
     except Exception as exc:
@@ -231,7 +264,12 @@ def export_video(
     return output_path
 
 
-def export_image_sequence(project: Project, event_bus: EventBus, basename: str) -> Path:
+def export_image_sequence(
+    project: Project,
+    event_bus: EventBus,
+    basename: str,
+    on_progress: ProgressCallback | None = None,
+) -> Path:
     """Copy every frame, in Timeline order, into a fresh
     exports/<basename>_sequence/ folder, renumbered sequentially from 1
     with no gaps -- regardless of the original (possibly non-contiguous,
@@ -247,6 +285,8 @@ def export_image_sequence(project: Project, event_bus: EventBus, basename: str) 
         event_bus: The event bus IMAGE_SEQUENCE_EXPORTED is published on.
         basename: Shared base filename, no extension (see
             _export_basename()).
+        on_progress: Called with an ExportProgress after each frame is
+            copied. Optional -- see ProgressCallback.
 
     Returns:
         The real path of the written sequence folder.
@@ -259,6 +299,7 @@ def export_image_sequence(project: Project, event_bus: EventBus, basename: str) 
     sequence_dir = _exports_dir(project) / f"{basename}_sequence"
     sequence_dir.mkdir(parents=True, exist_ok=True)
 
+    total = len(frames)
     for index, frame in enumerate(frames, start=1):
         source_path = project.project_path / frame.file
         suffix = Path(frame.file).suffix or ".png"
@@ -269,6 +310,8 @@ def export_image_sequence(project: Project, event_bus: EventBus, basename: str) 
             raise ExportServiceError(
                 f"Failed to copy frame {frame.file} into image sequence: {exc}"
             ) from exc
+        if on_progress is not None:
+            on_progress(ExportProgress("image_sequence", index, total))
 
     event_bus.publish("IMAGE_SEQUENCE_EXPORTED", {"path": str(sequence_dir)})
     logger.info("Image sequence exported: %s", sequence_dir)
@@ -276,7 +319,11 @@ def export_image_sequence(project: Project, event_bus: EventBus, basename: str) 
 
 
 def export_gif(
-    project: Project, event_bus: EventBus, basename: str, fps: float | None = None
+    project: Project,
+    event_bus: EventBus,
+    basename: str,
+    fps: float | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Render every frame, in Timeline order, to a looping animated GIF.
 
@@ -293,6 +340,12 @@ def export_gif(
         fps: Frame rate for the GIF's per-frame duration. None (the
             default) uses project.fps -- the Export dialog always sends
             an explicit value instead, defaulted to project.fps.
+        on_progress: Called with an ExportProgress after each frame is
+            loaded/quantized -- by far the slowest part of a GIF export
+            (see the FASTOCTREE comment below) -- so this already
+            reaches (total, total) before the final encode/save runs,
+            which has no per-frame hook of its own to report from.
+            Optional -- see ProgressCallback.
 
     Returns:
         The real path of the written .gif file.
@@ -330,6 +383,8 @@ def export_gif(
         # giving a real progress trail to check if a run looks stalled.
         if index == 1 or index % 10 == 0 or index == total:
             logger.info("GIF export: loaded %d/%d frames", index, total)
+        if on_progress is not None:
+            on_progress(ExportProgress("gif", index, total))
 
     logger.info("GIF export: encoding %d frames to %s", total, output_path)
     stop_heartbeat = threading.Event()
@@ -364,7 +419,11 @@ def export_gif(
     return output_path
 
 
-def export_all(request: ExportRequest, event_bus: EventBus) -> ExportResult:
+def export_all(
+    request: ExportRequest,
+    event_bus: EventBus,
+    on_progress: ProgressCallback | None = None,
+) -> ExportResult:
     """Export whichever formats the Export dialog's ExportRequest asked
     for, sharing one timestamped basename so the outputs are recognizable
     in the Exports list as belonging together.
@@ -380,6 +439,11 @@ def export_all(request: ExportRequest, event_bus: EventBus) -> ExportResult:
         request: Which formats to run and their per-format settings.
         event_bus: The event bus each successful format's *_EXPORTED
             event is published on.
+        on_progress: Called with an ExportProgress as each running
+            format makes progress -- forwarded as-is from whichever
+            export_video()/export_image_sequence()/export_gif() is
+            currently running, so format_key tells the caller which job
+            a given update belongs to. Optional -- see ProgressCallback.
 
     Returns:
         An ExportResult listing which formats succeeded (with their real
@@ -402,7 +466,11 @@ def export_all(request: ExportRequest, event_bus: EventBus) -> ExportResult:
             (
                 "video",
                 lambda: export_video(
-                    project, event_bus, basename, codec=request.video_codec
+                    project,
+                    event_bus,
+                    basename,
+                    codec=request.video_codec,
+                    on_progress=on_progress,
                 ),
             )
         )
@@ -410,14 +478,22 @@ def export_all(request: ExportRequest, event_bus: EventBus) -> ExportResult:
         jobs.append(
             (
                 "image_sequence",
-                lambda: export_image_sequence(project, event_bus, basename),
+                lambda: export_image_sequence(
+                    project, event_bus, basename, on_progress=on_progress
+                ),
             )
         )
     if request.want_gif:
         jobs.append(
             (
                 "gif",
-                lambda: export_gif(project, event_bus, basename, fps=request.gif_fps),
+                lambda: export_gif(
+                    project,
+                    event_bus,
+                    basename,
+                    fps=request.gif_fps,
+                    on_progress=on_progress,
+                ),
             )
         )
 

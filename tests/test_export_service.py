@@ -7,6 +7,7 @@ from PIL import Image
 
 from framelabs.core.event_bus import EventBus
 from framelabs.export.export_service import (
+    ExportProgress,
     ExportRequest,
     ExportServiceError,
     export_all,
@@ -282,3 +283,82 @@ def test_export_all_passes_gif_fps_through(tmp_path):
 
     with Image.open(result.succeeded["gif"]) as gif:
         assert gif.info.get("duration") == round(round(1000 / 30) / 10) * 10
+
+
+# --- Progress reporting (on_progress) -------------------------------------
+
+
+def test_export_video_reports_progress_per_frame(tmp_path):
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    _add_frame(project, 3)
+    event_bus = EventBus()
+    updates = []
+
+    export_video(project, event_bus, "basename", on_progress=updates.append)
+
+    assert [u.current for u in updates] == [1, 2, 3]
+    assert all(u.total == 3 for u in updates)
+    assert all(u.format_key == "video" for u in updates)
+
+
+def test_export_video_no_progress_callback_is_fine(tmp_path):
+    """on_progress is optional -- omitting it entirely must not raise."""
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    event_bus = EventBus()
+
+    output_path = export_video(project, event_bus, "basename")
+
+    assert output_path.exists()
+
+
+def test_export_image_sequence_reports_progress_per_frame(tmp_path):
+    project = _make_project(tmp_path)
+    _add_frame(project, 5)
+    _add_frame(project, 12)
+    event_bus = EventBus()
+    updates = []
+
+    export_image_sequence(project, event_bus, "basename", on_progress=updates.append)
+
+    assert [u.current for u in updates] == [1, 2]
+    assert all(u.total == 2 for u in updates)
+    assert all(u.format_key == "image_sequence" for u in updates)
+
+
+def test_export_gif_reports_progress_per_frame(tmp_path):
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    event_bus = EventBus()
+    updates = []
+
+    export_gif(project, event_bus, "basename", on_progress=updates.append)
+
+    assert [u.current for u in updates] == [1, 2]
+    assert all(u.total == 2 for u in updates)
+    assert all(u.format_key == "gif" for u in updates)
+    # The last update should always land at 100% before save() -- the
+    # UI's progress bar has nothing else to advance it during the final
+    # encode, which has no per-frame hook of its own (see export_gif's
+    # docstring).
+    assert updates[-1].current == updates[-1].total
+
+
+def test_export_all_forwards_progress_from_each_requested_format(tmp_path):
+    project = _make_project(tmp_path)
+    _add_frame(project, 1)
+    _add_frame(project, 2)
+    event_bus = EventBus()
+    request = ExportRequest(
+        project=project, want_video=True, want_gif=True, video_codec="mp4v"
+    )
+    updates = []
+
+    export_all(request, event_bus, on_progress=updates.append)
+
+    format_keys = {u.format_key for u in updates}
+    assert format_keys == {"video", "gif"}
+    assert isinstance(updates[0], ExportProgress)
