@@ -39,6 +39,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "delete_frame": "Delete",
         "play_pause": "Return,Enter",
         "open_in_blender": "B",
+        "export": "Ctrl+E",
         "toggle_onion_skin": "O",
         "previous_frame": "Left",
         "next_frame": "Right",

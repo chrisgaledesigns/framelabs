@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressDialog,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -27,7 +28,7 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
-from framelabs.export.export_service import ExportResult
+from framelabs.export.export_service import ExportProgress, ExportResult
 from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
 from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
@@ -62,6 +63,14 @@ logger = logging.getLogger(__name__)
 # (not in autosave_controller.py) because the timer itself lives on the
 # main thread -- see _start_autosave_controller()'s docstring.
 AUTOSAVE_INTERVAL_MS = 30000
+
+# Human-readable label per ExportProgress.format_key, for the export
+# progress dialog. Keys match export_service.ExportResult's keys exactly.
+_EXPORT_FORMAT_LABELS = {
+    "video": "Rendering video",
+    "image_sequence": "Copying image sequence",
+    "gif": "Encoding GIF",
+}
 
 
 class MainWindow(QMainWindow):
@@ -104,6 +113,9 @@ class MainWindow(QMainWindow):
         # has started -- see closeEvent()'s docstring for the full
         # explanation of the shutdown race this prevents.
         self._shutting_down = False
+        # Live only while a video/sequence/GIF export is running -- see
+        # _on_export_render()/_on_export_progress()/_close_export_progress().
+        self._export_progress_dialog: QProgressDialog | None = None
         self._create_actions()
         self._build_menu_bar()
         self._build_central_panes()
@@ -184,10 +196,17 @@ class MainWindow(QMainWindow):
         self.camera_action = QAction("Rescan", self)
         self.camera_action.triggered.connect(self._on_rescan_camera)
 
-        self.export_action = QAction("Export", self)
-        self.export_action.triggered.connect(lambda: logger.info("Export clicked"))
+        # "Export .blend" -- headless manifest -> script -> Blender
+        # (--background) pipeline that saves a shareable .blend with no
+        # interactive window, e.g. for handing a scene to a collaborator
+        # who'll open it themselves. Distinct from export_render_action
+        # below (video/image-sequence/GIF), and from blender_action
+        # (interactive "Open in Blender").
+        self.export_action = QAction("Export .blend...", self)
+        self.export_action.triggered.connect(self._on_export_blend)
 
         self.export_render_action = QAction("Export...", self)
+        self.export_render_action.setShortcuts(self._shortcuts("export"))
         self.export_render_action.triggered.connect(self._on_export_render)
 
         self.blender_action = QAction("Open in Blender", self)
@@ -486,6 +505,7 @@ class MainWindow(QMainWindow):
 
         self.export_controller.export_succeeded.connect(self._on_export_succeeded)
         self.export_controller.export_failed.connect(self._on_export_failed)
+        self.export_controller.export_progress.connect(self._on_export_progress)
 
         self._export_thread.start()
 
@@ -510,6 +530,15 @@ class MainWindow(QMainWindow):
         )
         self.blender_controller.already_running.connect(
             self._on_blender_already_running
+        )
+        self.blender_controller.blend_export_succeeded.connect(
+            self._on_blend_export_succeeded
+        )
+        self.blender_controller.blend_export_failed.connect(
+            self._on_blend_export_failed
+        )
+        self.blender_controller.blend_export_executable_not_found.connect(
+            self._on_blend_export_executable_not_found
         )
 
         self._blender_thread.start()
@@ -865,7 +894,10 @@ class MainWindow(QMainWindow):
         to get here with nothing to run. Disables the menu action for
         the export's duration so a second click can't overlap one
         already in progress; re-enabled in both _on_export_succeeded()
-        and _on_export_failed().
+        and _on_export_failed(). Also shows a real progress dialog,
+        updated by _on_export_progress() as ExportController re-emits
+        export_all()'s per-frame progress -- no Cancel button, since
+        export_service has no mid-export cancellation to hook it up to.
         """
         if self.project is None or self.project.project_path is None:
             return
@@ -874,13 +906,47 @@ class MainWindow(QMainWindow):
             return
         request = dialog.export_request()
         self.export_render_action.setEnabled(False)
+
+        self._export_progress_dialog = QProgressDialog(
+            "Starting export...", "", 0, 100, self
+        )
+        self._export_progress_dialog.setWindowTitle("Exporting")
+        self._export_progress_dialog.setCancelButton(None)
+        self._export_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._export_progress_dialog.setMinimumDuration(0)
+        self._export_progress_dialog.setValue(0)
+
         self.export_controller.export_requested.emit(request)
+
+    def _on_export_progress(self, progress: ExportProgress) -> None:
+        """Update the export progress dialog from ExportController's
+        re-emitted ExportProgress. No-op if the dialog was already
+        closed (e.g. a stray late signal after _close_export_progress()
+        already ran) -- see _on_export_render()'s docstring."""
+        if self._export_progress_dialog is None:
+            return
+        label = _EXPORT_FORMAT_LABELS.get(progress.format_key, progress.format_key)
+        percent = int(progress.current / progress.total * 100) if progress.total else 0
+        self._export_progress_dialog.setLabelText(
+            f"{label}: {progress.current}/{progress.total} frames"
+        )
+        self._export_progress_dialog.setValue(percent)
+
+    def _close_export_progress(self) -> None:
+        """Close and release the export progress dialog, if one is
+        showing. Shared by _on_export_succeeded() and
+        _on_export_failed() -- every path out of an export needs this,
+        successful or not."""
+        if self._export_progress_dialog is not None:
+            self._export_progress_dialog.close()
+            self._export_progress_dialog = None
 
     def _on_export_succeeded(self, result: ExportResult) -> None:
         """Report the finished export, refreshing the Exports list either
         way -- a partial success (see export_all()'s docstring) still
         writes real files that belong there."""
         self.export_render_action.setEnabled(True)
+        self._close_export_progress()
         if self.project is not None:
             self.project_browser_widget.set_project(self.project)
 
@@ -905,6 +971,7 @@ class MainWindow(QMainWindow):
     def _on_export_failed(self, message: str) -> None:
         """Report a total export failure (e.g. no frames to export)."""
         self.export_render_action.setEnabled(True)
+        self._close_export_progress()
         QMessageBox.warning(self, "Export Failed", message)
 
     def _on_open_in_blender(self) -> None:
@@ -999,6 +1066,62 @@ class MainWindow(QMainWindow):
             self.blender_controller.force_new_instance_requested.emit(self.project)
         # Reuse or Cancel: leave the existing Blender window alone, no
         # further action needed.
+
+    def _on_export_blend(self) -> None:
+        """ "Export .blend": the same manifest -> script pipeline as
+        "Open in Blender", but run headlessly via
+        BlenderBridgeController.export_blend_requested -- writes a
+        shareable .blend with no interactive window, e.g. for handing
+        the scene to a collaborator to open themselves.
+
+        Disables the menu action for the duration, same pattern as
+        _on_open_in_blender() -- re-enabled in every one of the three
+        possible outcomes (succeeded/failed/executable-not-found) below.
+        No already-running guard here: unlike an interactive launch, a
+        background export is a short-lived process with no window left
+        open afterwards for a later click to collide with.
+        """
+        if self.project is None or self.project.project_path is None:
+            return
+        self.export_action.setEnabled(False)
+        self.blender_controller.export_blend_requested.emit(self.project)
+
+    def _on_blend_export_succeeded(self, blend_output_path: str) -> None:
+        """ "Export .blend" finished and the file was written -- unlike
+        the interactive bridge (no dialog, since Blender's own window is
+        already opening), this path has nothing else visible to the user
+        yet, so a confirmation with the real path is worth showing."""
+        self.export_action.setEnabled(True)
+        if self.project is not None:
+            self.project_browser_widget.set_project(self.project)
+        QMessageBox.information(
+            self,
+            "Blend Exported",
+            f"Scene saved to:\n{blend_output_path}",
+        )
+
+    def _on_blend_export_failed(self, message: str) -> None:
+        """Report an "Export .blend" failure that isn't the specific
+        "no executable found" case (see
+        _on_blend_export_executable_not_found for that one)."""
+        self.export_action.setEnabled(True)
+        QMessageBox.warning(self, "Export .blend Failed", message)
+
+    def _on_blend_export_executable_not_found(self) -> None:
+        """Feature Spec's named failure case, for the "Export .blend"
+        path specifically -- same prompt-and-remember pattern as
+        _on_blender_executable_not_found(), kept separate only so the
+        follow-up message names the right action to click again."""
+        self.export_action.setEnabled(True)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Locate Blender Executable")
+        if not file_path:
+            return
+        self.blender_controller.locate_executable_requested.emit(file_path)
+        QMessageBox.information(
+            self,
+            "Blender Executable Remembered",
+            'Click "Export .blend..." again to continue.',
+        )
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",

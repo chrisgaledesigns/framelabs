@@ -147,3 +147,71 @@ class TestLaunch:
         with patch("subprocess.Popen", side_effect=OSError("no exec permission")):
             with pytest.raises(BlenderLaunchError):
                 launcher.launch(tmp_path / "generate_scene.py")
+
+
+class TestLaunchBackground:
+    """Tests for launch_background() -- the headless "Export .blend"
+    path, distinct from launch()'s interactive window."""
+
+    def test_calls_run_with_background_and_python_flags(
+        self, config, fake_blender, tmp_path
+    ):
+        config.set("blender_executable_path", str(fake_blender))
+        launcher = BlenderLauncher(config)
+        script_path = tmp_path / "generate_scene.py"
+
+        fake_result = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            result = launcher.launch_background(script_path)
+
+        mock_run.assert_called_once_with(
+            [str(fake_blender), "--background", "--python", str(script_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert result is fake_result
+
+    def test_returns_completed_process_with_nonzero_exit_on_script_error(
+        self, config, fake_blender, tmp_path
+    ):
+        """A non-zero exit code (the generated script raised inside
+        Blender) should come back as a normal return value, not an
+        exception -- the caller (blender_controller.py) is the one that
+        decides what a bad exit code means."""
+        config.set("blender_executable_path", str(fake_blender))
+        launcher = BlenderLauncher(config)
+        fake_result = MagicMock(returncode=1, stdout="", stderr="AttributeError: boom")
+
+        with patch("subprocess.run", return_value=fake_result):
+            result = launcher.launch_background(tmp_path / "generate_scene.py")
+
+        assert result.returncode == 1
+        assert "AttributeError" in result.stderr
+
+    def test_does_not_affect_has_running_instance(self, config, fake_blender, tmp_path):
+        """A background export is a short-lived, already-finished
+        process by the time this returns -- it must not register as a
+        "still running" instance the way launch() does."""
+        config.set("blender_executable_path", str(fake_blender))
+        launcher = BlenderLauncher(config)
+        fake_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("subprocess.run", return_value=fake_result):
+            launcher.launch_background(tmp_path / "generate_scene.py")
+
+        assert launcher.has_running_instance() is False
+
+    def test_raises_if_executable_cannot_be_resolved(self, config, tmp_path):
+        launcher = BlenderLauncher(config)
+        with patch(
+            "framelabs.blender.launcher.auto_detect_executable", return_value=None
+        ):
+            with pytest.raises(BlenderLaunchError):
+                launcher.launch_background(tmp_path / "generate_scene.py")
+
+    def test_raises_if_run_fails(self, config, fake_blender, tmp_path):
+        launcher = BlenderLauncher(config)
+        config.set("blender_executable_path", str(fake_blender))
+        with patch("subprocess.run", side_effect=OSError("no exec permission")):
+            with pytest.raises(BlenderLaunchError):
+                launcher.launch_background(tmp_path / "generate_scene.py")

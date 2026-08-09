@@ -192,3 +192,57 @@ class BlenderLauncher:
         self._process = process
         logger.info("Blender launched (pid %d): %s", process.pid, executable)
         return process
+
+    def launch_background(self, script_path: Path) -> subprocess.CompletedProcess:
+        """Run `script_path` in Blender's `--background` mode and wait
+        for it to finish, rather than opening an interactive window.
+
+        Used for "Export .blend" (see scene_builder.py's generated
+        script, which already ends by calling
+        `bpy.ops.wm.save_as_mainfile()`) -- headless mode runs the
+        script once and exits on its own with no window ever appearing,
+        which is exactly what a save-and-quit export needs and an
+        interactive launch() doesn't offer. Deliberately blocking
+        (subprocess.run, not Popen): the caller is expected to already
+        be on a worker thread (see ui/blender_controller.py), and the
+        whole point of this call is "wait until the .blend is actually
+        written, then report success or failure" -- unlike launch(),
+        there is no window left open afterwards to hand control back to.
+
+        Does not touch `self._process`/has_running_instance() -- those
+        track the interactive launch() path specifically (an
+        Open-in-Blender window a later click might need to know is
+        still running); a background export process has already exited
+        by the time this returns, so there is nothing left to track.
+
+        Args:
+            script_path: Absolute path to the generator script Blender
+                should run via --python before exiting.
+
+        Returns:
+            The completed subprocess.CompletedProcess. Callers should
+            check .returncode -- a non-zero exit means the script raised
+            inside Blender (e.g. the scene_builder.py bug described in
+            the project hand-off), which this method itself can't detect
+            since it never imports bpy.
+
+        Raises:
+            BlenderLaunchError: If the executable can't be resolved, or
+                the process fails to start at all.
+        """
+        executable = self.resolve_executable()
+        try:
+            result = subprocess.run(
+                [str(executable), "--background", "--python", str(script_path)],
+                capture_output=True,
+                text=True,
+            )
+        except OSError as exc:
+            raise BlenderLaunchError(f"Failed to launch Blender: {exc}") from exc
+
+        logger.info(
+            "Blender background export finished (exit %d): %s",
+            result.returncode,
+            executable,
+        )
+        return result
