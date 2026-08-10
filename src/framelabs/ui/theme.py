@@ -20,7 +20,9 @@ TEXT_PRIMARY = "#eef2f5"
 TEXT_SECONDARY = "#7c8b98"  # menu items, section labels, field labels
 TEXT_DISABLED = "#455563"
 
-FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Consolas", "SF Mono", "Menlo", monospace'
+FONT_FAMILY = (
+    '"JetBrains Mono", "Cascadia Code", "Consolas", "SF Mono", "Menlo", monospace'
+)
 
 STYLESHEET = f"""
 * {{
