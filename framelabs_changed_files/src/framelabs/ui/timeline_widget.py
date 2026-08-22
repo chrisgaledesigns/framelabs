@@ -32,6 +32,7 @@ MainWindow owns behavior" split as PlaybackControls above.
 
 from __future__ import annotations
 
+import bisect
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, Signal
@@ -357,6 +358,13 @@ class TimelineWidget(QScrollArea):
         self._selected_indices: set[int] = set()
         self._selection_anchor: int | None = None
         self._pending_drop_before_number: int | None = None
+        # Cache of non-selected thumbnails' (index, left_x) and a parallel
+        # center_x list, populated lazily by the first _on_reorder_dragged()
+        # call of a drag gesture and reset to None on drop/refresh -- see
+        # that method's docstring for why recomputing this every mouse-move
+        # (the original implementation) was the actual source of drag lag.
+        self._reorder_candidates: list[tuple[int, int]] | None = None
+        self._reorder_candidate_centers: list[int] = []
 
         # Floating child of _strip (not part of _strip_layout), positioned
         # with raw setGeometry() calls during a reorder-drag rather than
@@ -404,6 +412,8 @@ class TimelineWidget(QScrollArea):
         self._selected_indices = set()
         self._selection_anchor = None
         self._pending_drop_before_number = None
+        self._reorder_candidates = None
+        self._reorder_candidate_centers = []
         self._drop_indicator.hide()
 
         for index, frame in enumerate(frames):
@@ -510,28 +520,45 @@ class TimelineWidget(QScrollArea):
         goes at the strip's right edge ("drop at the end"). Only
         non-selected thumbnails are considered, since the frames actually
         being dragged aren't valid drop targets for themselves.
+
+        This fires on every pixel of mouse movement for the whole drag,
+        so it deliberately avoids any per-move Qt widget-tree walk:
+        `_strip.findChildren(FrameThumbnail)` is a full traversal, and
+        calling it (plus sorting the result) on every mouse-move event was
+        the actual source of visible drag lag on timelines with more than
+        a couple dozen frames -- geometry doesn't change mid-drag (the
+        indicator is a floating overlay, nothing in the layout actually
+        moves until the drop), so `_reorder_candidates` computes it once
+        per drag gesture and every subsequent move just does an O(log n)
+        bisect search over the cached, already-sorted x positions.
         """
         if not self._frames:
             return
         local_x = self._strip.mapFromGlobal(QPoint(global_x, 0)).x()
 
-        candidates = sorted(
-            (
-                t
-                for t in self._strip.findChildren(FrameThumbnail)
+        if self._reorder_candidates is None:
+            ordered = sorted(
+                self._strip.findChildren(FrameThumbnail), key=lambda t: t._index
+            )
+            self._reorder_candidates = [
+                (t._index, t.geometry().left())
+                for t in ordered
                 if t._index not in self._selected_indices
-            ),
-            key=lambda t: t._index,
-        )
+            ]
+            self._reorder_candidate_centers = [
+                t.geometry().center().x()
+                for t in ordered
+                if t._index not in self._selected_indices
+            ]
 
-        insert_before_number: int | None = None
-        indicator_x = self._strip.width()
-        for thumbnail in candidates:
-            geometry = thumbnail.geometry()
-            if local_x < geometry.center().x():
-                insert_before_number = self._frames[thumbnail._index].number
-                indicator_x = geometry.left()
-                break
+        position = bisect.bisect_right(self._reorder_candidate_centers, local_x)
+        if position < len(self._reorder_candidates):
+            index, left_x = self._reorder_candidates[position]
+            insert_before_number = self._frames[index].number
+            indicator_x = left_x
+        else:
+            insert_before_number = None
+            indicator_x = self._strip.width()
 
         self._pending_drop_before_number = insert_before_number
         self._drop_indicator.setGeometry(
@@ -540,8 +567,9 @@ class TimelineWidget(QScrollArea):
             DROP_INDICATOR_WIDTH,
             self._strip.height(),
         )
-        self._drop_indicator.show()
-        self._drop_indicator.raise_()
+        if self._drop_indicator.isHidden():
+            self._drop_indicator.show()
+            self._drop_indicator.raise_()
 
     def _on_reorder_dropped(self, dragged_index: int) -> None:
         """Finish a reorder-drag: emit `frames_reorder_requested` and
@@ -554,6 +582,8 @@ class TimelineWidget(QScrollArea):
         out of `_selected_indices`.
         """
         self._drop_indicator.hide()
+        self._reorder_candidates = None
+        self._reorder_candidate_centers = []
         if not self._frames:
             return
 
