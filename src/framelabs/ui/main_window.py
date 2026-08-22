@@ -311,9 +311,10 @@ class MainWindow(QMainWindow):
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)
         capture_menu.addAction(self.onion_action)
-        capture_menu.addAction(self.safe_areas_action)
 
-        guides_menu = capture_menu.addMenu("Guides")
+        guides_menu = menu_bar.addMenu("&Guides")
+        guides_menu.addAction(self.safe_areas_action)
+        guides_menu.addSeparator()
         composition_menu = guides_menu.addMenu("Composition Guide")
         for guide_type in COMPOSITION_GUIDE_TYPES:
             composition_menu.addAction(self.composition_guide_actions[guide_type])

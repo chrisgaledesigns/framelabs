@@ -27,8 +27,8 @@ from framelabs.timeline.timeline import Timeline
 
 logger = logging.getLogger(__name__)
 
-# Each entry: (image_bytes, opacity, tint_hex).
-OnionLayer = tuple[bytes, float, str]
+# Each entry: (image_bytes, opacity).
+OnionLayer = tuple[bytes, float]
 
 
 class OnionSkinController(QObject):
@@ -69,13 +69,11 @@ class OnionSkinController(QObject):
         before_layers = self._load_layers(
             timeline,
             timeline.frames_before_current(settings.previous_count),
-            settings.previous_tint,
             settings,
         )
         after_layers = self._load_layers(
             timeline,
             timeline.frames_after_current(settings.next_count),
-            settings.next_tint,
             settings,
         )
         self.frames_ready.emit(before_layers, after_layers)
@@ -84,7 +82,6 @@ class OnionSkinController(QObject):
     def _load_layers(
         timeline: Timeline,
         frames: list,
-        tint: str,
         settings: OnionSkinSettings,
     ) -> list[OnionLayer]:
         """Read each frame's image bytes off disk, nearest-first.
@@ -95,7 +92,6 @@ class OnionSkinController(QObject):
             frames: Frames to load, already ordered nearest-first by the
                 caller (Timeline.frames_before_current()/
                 frames_after_current()).
-            tint: Hex tint color to pair with every layer in this list.
             settings: Used for opacity_for_distance() -- distance is this
                 frame's 1-indexed position in `frames`.
         """
@@ -118,5 +114,5 @@ class OnionSkinController(QObject):
                 )
                 continue
             opacity = settings.opacity_for_distance(distance)
-            layers.append((image_bytes, opacity, tint))
+            layers.append((image_bytes, opacity))
         return layers

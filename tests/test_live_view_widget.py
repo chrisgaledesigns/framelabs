@@ -243,8 +243,8 @@ def test_composition_and_aspect_ratio_guides_are_independent():
 def test_set_onion_layers_adds_before_and_after_layers():
     widget = LiveViewWidget()
     widget.show_frame(_real_png_bytes())
-    before = [(_real_png_bytes(), 0.5, "#ff0000")]
-    after = [(_real_png_bytes(), 0.3, "#0000ff"), (_real_png_bytes(), 0.1, "#0000ff")]
+    before = [(_real_png_bytes(), 0.5)]
+    after = [(_real_png_bytes(), 0.3), (_real_png_bytes(), 0.1)]
 
     widget.set_onion_layers(before, after)
 
@@ -253,7 +253,7 @@ def test_set_onion_layers_adds_before_and_after_layers():
 
 def test_set_onion_layers_skips_invalid_image_bytes():
     widget = LiveViewWidget()
-    before = [(b"not a real image", 0.5, "#ff0000")]
+    before = [(b"not a real image", 0.5)]
 
     widget.set_onion_layers(before, [])
 
@@ -262,7 +262,7 @@ def test_set_onion_layers_skips_invalid_image_bytes():
 
 def test_set_onion_layers_replaces_previous_layers():
     widget = LiveViewWidget()
-    widget.set_onion_layers([(_real_png_bytes(), 0.5, "#ff0000")], [])
+    widget.set_onion_layers([(_real_png_bytes(), 0.5)], [])
     assert len(widget._onion_items) == 1
 
     widget.set_onion_layers([], [])

@@ -4,7 +4,7 @@ Pure data/logic module, per the Developer Handbook -- no file I/O and no
 Qt/UI code. Reading frame image bytes off disk belongs to a dedicated UI
 controller (background thread); the actual overlay rendering belongs to
 ui/live_view_widget.py. This module only defines what onion skin *means*:
-how many frames on each side, at what opacity, tinted what color.
+how many frames on each side, at what opacity.
 """
 
 from __future__ import annotations
@@ -23,16 +23,12 @@ class OnionSkinSettings:
             opacity_for_distance().
         previous_count: How many frames before the current one to overlay.
         next_count: How many frames after the current one to overlay.
-        previous_tint: Hex color (e.g. "#3399ff") tinting previous frames.
-        next_tint: Hex color tinting next frames.
     """
 
     enabled: bool = False
     opacity: float = 0.35
     previous_count: int = 2
     next_count: int = 1
-    previous_tint: str = "#3399ff"
-    next_tint: str = "#ff3333"
 
     def opacity_for_distance(self, distance: int) -> float:
         """Return the effective opacity for a frame `distance` steps away.

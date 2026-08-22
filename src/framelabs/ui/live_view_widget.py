@@ -21,7 +21,6 @@ from __future__ import annotations
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QGraphicsColorizeEffect,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
@@ -214,14 +213,14 @@ class LiveViewWidget(QGraphicsView):
         self._aspect_ratio_guide_item.set_ratio_type(ratio_type)
 
     def set_onion_layers(
-        self, before_layers: list[tuple[bytes, float, str]], after_layers: list
+        self, before_layers: list[tuple[bytes, float]], after_layers: list
     ) -> None:
         """Replace the onion skin overlay with a new set of frame layers.
 
         Args:
-            before_layers: (image_bytes, opacity, tint_hex) tuples for
-                frames before the current one, nearest-first -- the same
-                shape OnionSkinController.frames_ready emits.
+            before_layers: (image_bytes, opacity) tuples for frames before
+                the current one, nearest-first -- the same shape
+                OnionSkinController.frames_ready emits.
             after_layers: Same shape, for frames after the current one.
 
         Each layer is drawn at (0, 0) in scene coordinates, on the
@@ -241,9 +240,9 @@ class LiveViewWidget(QGraphicsView):
         self._add_onion_layers(before_layers)
         self._add_onion_layers(after_layers)
 
-    def _add_onion_layers(self, layers: list[tuple[bytes, float, str]]) -> None:
+    def _add_onion_layers(self, layers: list[tuple[bytes, float]]) -> None:
         """Add one side's onion layers (already nearest-first) to the scene."""
-        for distance, (image_bytes, opacity, tint_hex) in enumerate(layers, start=1):
+        for distance, (image_bytes, opacity) in enumerate(layers, start=1):
             image = QImage.fromData(image_bytes)
             if image.isNull():
                 continue
@@ -257,11 +256,6 @@ class LiveViewWidget(QGraphicsView):
             # current frame's zValue; further frames stack progressively
             # above that.
             item.setZValue(CURRENT_FRAME_Z_VALUE + distance)
-
-            effect = QGraphicsColorizeEffect()
-            effect.setColor(QColor(tint_hex))
-            effect.setStrength(1.0)
-            item.setGraphicsEffect(effect)
 
             self._scene.addItem(item)
             self._onion_items.append(item)

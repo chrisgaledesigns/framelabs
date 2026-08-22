@@ -11,8 +11,6 @@ def test_defaults():
     assert settings.opacity == 0.35
     assert settings.previous_count == 2
     assert settings.next_count == 1
-    assert settings.previous_tint == "#3399ff"
-    assert settings.next_tint == "#ff3333"
 
 
 def test_opacity_for_distance_one_returns_base_opacity():
