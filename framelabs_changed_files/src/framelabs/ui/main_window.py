@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
-from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -41,14 +41,6 @@ from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.blender_controller import BlenderBridgeController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
-from framelabs.ui.composition_guides import (
-    ASPECT_RATIO_GUIDE_TYPES,
-    ASPECT_RATIO_LABELS,
-    ASPECT_RATIO_NONE,
-    COMPOSITION_GUIDE_LABELS,
-    COMPOSITION_GUIDE_TYPES,
-    GUIDE_NONE,
-)
 from framelabs.ui.export_controller import ExportController
 from framelabs.ui.export_dialog import ExportDialog
 from framelabs.ui.inspector_panel import InspectorPanel
@@ -202,42 +194,6 @@ class MainWindow(QMainWindow):
         self.safe_areas_action.setCheckable(True)
         self.safe_areas_action.triggered.connect(self._on_toggle_safe_areas)
 
-        # Composition guide overlays (Center Grid, Thirds, Golden Ratio,
-        # etc.) -- mutually exclusive via QActionGroup, since
-        # LiveViewWidget only ever shows one at a time. "None" is a real
-        # entry in the group (not a separate toggle) so the group always
-        # has exactly one checked action, matching
-        # composition_guides.COMPOSITION_GUIDE_TYPES exactly.
-        self.composition_guide_actions: dict[str, QAction] = {}
-        self.composition_guide_group = QActionGroup(self)
-        self.composition_guide_group.setExclusive(True)
-        for guide_type in COMPOSITION_GUIDE_TYPES:
-            action = QAction(COMPOSITION_GUIDE_LABELS[guide_type], self)
-            action.setCheckable(True)
-            action.setChecked(guide_type == GUIDE_NONE)
-            action.triggered.connect(
-                partial(self._on_composition_guide_selected, guide_type)
-            )
-            self.composition_guide_group.addAction(action)
-            self.composition_guide_actions[guide_type] = action
-
-        # Aspect ratio crop guides (1:1, 4:3, 16:9, etc.) -- same
-        # mutually-exclusive-group-with-a-real-"None"-entry pattern as
-        # composition guides above, and fully independent of it: both
-        # groups can have a real selection active at once.
-        self.aspect_ratio_guide_actions: dict[str, QAction] = {}
-        self.aspect_ratio_guide_group = QActionGroup(self)
-        self.aspect_ratio_guide_group.setExclusive(True)
-        for ratio_type in ASPECT_RATIO_GUIDE_TYPES:
-            action = QAction(ASPECT_RATIO_LABELS[ratio_type], self)
-            action.setCheckable(True)
-            action.setChecked(ratio_type == ASPECT_RATIO_NONE)
-            action.triggered.connect(
-                partial(self._on_aspect_ratio_guide_selected, ratio_type)
-            )
-            self.aspect_ratio_guide_group.addAction(action)
-            self.aspect_ratio_guide_actions[ratio_type] = action
-
         self.camera_action = QAction("Rescan", self)
         self.camera_action.triggered.connect(self._on_rescan_camera)
 
@@ -312,18 +268,6 @@ class MainWindow(QMainWindow):
         capture_menu.addAction(self.capture_action)
         capture_menu.addAction(self.onion_action)
         capture_menu.addAction(self.safe_areas_action)
-
-        guides_menu = capture_menu.addMenu("Guides")
-        composition_menu = guides_menu.addMenu("Composition Guide")
-        for guide_type in COMPOSITION_GUIDE_TYPES:
-            composition_menu.addAction(self.composition_guide_actions[guide_type])
-            if guide_type == GUIDE_NONE:
-                composition_menu.addSeparator()
-        aspect_ratio_menu = guides_menu.addMenu("Aspect Ratio Guide")
-        for ratio_type in ASPECT_RATIO_GUIDE_TYPES:
-            aspect_ratio_menu.addAction(self.aspect_ratio_guide_actions[ratio_type])
-            if ratio_type == ASPECT_RATIO_NONE:
-                aspect_ratio_menu.addSeparator()
 
         playback_menu = menu_bar.addMenu("&Playback")
         playback_menu.addAction(self.play_action)
@@ -1489,30 +1433,6 @@ class MainWindow(QMainWindow):
         """
         self.live_view_widget.set_safe_areas_visible(checked)
         logger.info("Safe Areas %s", "enabled" if checked else "disabled")
-
-    def _on_composition_guide_selected(self, guide_type: str) -> None:
-        """Switch the composition guide overlay to `guide_type`.
-
-        Connected once per action in _create_actions() via
-        functools.partial, so `guide_type` is which menu entry fired
-        this, not which one is currently checked -- QActionGroup already
-        guarantees exactly one of composition_guide_actions is checked
-        at a time, this just forwards that selection to LiveViewWidget.
-        Pure UI geometry like Safe Areas, so (per
-        _on_toggle_safe_areas's docstring) no worker-thread refresh is
-        needed here either.
-        """
-        self.live_view_widget.set_composition_guide(guide_type)
-        logger.info("Composition Guide set to %s", guide_type)
-
-    def _on_aspect_ratio_guide_selected(self, ratio_type: str) -> None:
-        """Switch the aspect ratio crop guide overlay to `ratio_type`.
-
-        Same functools.partial/QActionGroup pattern as
-        _on_composition_guide_selected -- see that method's docstring.
-        """
-        self.live_view_widget.set_aspect_ratio_guide(ratio_type)
-        logger.info("Aspect Ratio Guide set to %s", ratio_type)
 
     def _on_toggle_play(self) -> None:
         """Start or stop playback, per Feature 7.

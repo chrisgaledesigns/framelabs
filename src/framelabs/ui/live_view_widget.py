@@ -7,10 +7,12 @@ Displays whatever frame it's given -- either a live camera preview frame
 frame via zValue, each rendered at partial opacity so the current frame
 remains visible beneath the ghosted layers -- the current frame's own
 pixmap is fully opaque, so an onion layer stacked below it would be
-entirely hidden regardless of its own opacity. Safe area guides (also
+entirely hidden regardless of its own opacity. Composition guides and
+aspect ratio guides (composition_guides.py) are each a single
+QGraphicsItem stacked above the onion layers. Safe area guides (also
 Feature 3) are two static outline rectangles -- 90% action-safe, 80%
-title-safe -- stacked above even the onion layers, so they're always
-visible as a reference overlay regardless of what else is showing.
+title-safe -- stacked above everything else, so they're always visible
+as a reference overlay regardless of what other guides are showing.
 Histogram overlay is still to come as a later addition on top of this.
 """
 
@@ -26,6 +28,8 @@ from PySide6.QtWidgets import (
     QGraphicsView,
 )
 
+from framelabs.ui.composition_guides import AspectRatioGuideItem, CompositionGuideItem
+
 # Feature Spec Feature 3: "Mouse wheel" zoom, scaled per notch.
 ZOOM_FACTOR_PER_STEP = 1.15
 
@@ -34,9 +38,16 @@ ZOOM_FACTOR_PER_STEP = 1.15
 # the current frame stays visible underneath the ghosted layers.
 CURRENT_FRAME_Z_VALUE = 0.0
 
-# Safe area guides always render above every onion layer, however many
-# there are -- an arbitrarily high zValue guarantees this without needing
-# to know the current onion layer count.
+# Composition and aspect ratio guides render above every onion layer,
+# however many there are (an arbitrarily high zValue guarantees this
+# without needing to know the current onion layer count), but below the
+# safe area guides -- aspect ratio sits above composition since a crop
+# preview is usually the more load-bearing of the two when both are on.
+COMPOSITION_GUIDE_Z_VALUE = 500.0
+ASPECT_RATIO_GUIDE_Z_VALUE = 750.0
+
+# Safe area guides always render above every other overlay, an
+# arbitrarily high zValue above COMPOSITION/ASPECT_RATIO_GUIDE_Z_VALUE.
 SAFE_AREA_Z_VALUE = 1000.0
 
 # Feature Spec Feature 3: safe area guide ratios (fraction of frame
@@ -51,7 +62,7 @@ TITLE_SAFE_COLOR = QColor("red")
 
 class LiveViewWidget(QGraphicsView):
     """Displays a live or saved frame with zoom, pan, fit-to-view, Onion
-    Skin overlays, and Safe Area guides.
+    Skin overlays, Composition/Aspect Ratio guides, and Safe Area guides.
 
     Zoom: mouse wheel, centered on the cursor.
     Pan: middle mouse button drag.
@@ -63,7 +74,8 @@ class LiveViewWidget(QGraphicsView):
 
     def __init__(self) -> None:
         """Build the view, its scene, the pixmap item, and the (initially
-        hidden) safe area guide items."""
+        hidden) composition guide, aspect ratio guide, and safe area
+        guide items."""
         super().__init__()
         self.setObjectName("liveViewWidget")
         self._scene = QGraphicsScene(self)
@@ -74,6 +86,14 @@ class LiveViewWidget(QGraphicsView):
         self._scene.addItem(self._pixmap_item)
 
         self._onion_items: list[QGraphicsPixmapItem] = []
+
+        self._composition_guide_item = CompositionGuideItem()
+        self._composition_guide_item.setZValue(COMPOSITION_GUIDE_Z_VALUE)
+        self._scene.addItem(self._composition_guide_item)
+
+        self._aspect_ratio_guide_item = AspectRatioGuideItem()
+        self._aspect_ratio_guide_item.setZValue(ASPECT_RATIO_GUIDE_Z_VALUE)
+        self._scene.addItem(self._aspect_ratio_guide_item)
 
         self._action_safe_item = self._make_safe_area_item(ACTION_SAFE_COLOR)
         self._title_safe_item = self._make_safe_area_item(TITLE_SAFE_COLOR)
@@ -124,6 +144,8 @@ class LiveViewWidget(QGraphicsView):
         self._pixmap_item.setPixmap(pixmap)
         self._scene.setSceneRect(QRectF(pixmap.rect()))
         self._update_safe_area_geometry(pixmap.rect())
+        self._composition_guide_item.set_frame_rect(QRectF(pixmap.rect()))
+        self._aspect_ratio_guide_item.set_frame_rect(QRectF(pixmap.rect()))
 
         was_first_frame = not self._has_frame
         self._has_frame = True
@@ -166,6 +188,30 @@ class LiveViewWidget(QGraphicsView):
         """
         self._action_safe_item.setVisible(enabled)
         self._title_safe_item.setVisible(enabled)
+
+    def set_composition_guide(self, guide_type: str) -> None:
+        """Show a single composition-grid overlay, or hide it.
+
+        Args:
+            guide_type: One of composition_guides.COMPOSITION_GUIDE_TYPES
+                -- GUIDE_NONE hides the overlay, any other value shows
+                that guide (replacing whichever was showing before, since
+                only one composition guide is shown at a time).
+        """
+        self._composition_guide_item.set_guide_type(guide_type)
+
+    def set_aspect_ratio_guide(self, ratio_type: str) -> None:
+        """Show a single aspect-ratio crop guide, or hide it.
+
+        Args:
+            ratio_type: One of composition_guides.ASPECT_RATIO_GUIDE_TYPES
+                -- ASPECT_RATIO_NONE hides the overlay, any other value
+                shows that ratio's centered crop rectangle (replacing
+                whichever was showing before, since only one aspect ratio
+                guide is shown at a time). Independent of whichever
+                composition guide (if any) is also showing.
+        """
+        self._aspect_ratio_guide_item.set_ratio_type(ratio_type)
 
     def set_onion_layers(
         self, before_layers: list[tuple[bytes, float, str]], after_layers: list

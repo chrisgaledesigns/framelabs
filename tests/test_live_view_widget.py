@@ -13,6 +13,12 @@ import numpy as np
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 
+from framelabs.ui.composition_guides import (
+    ASPECT_RATIO_16_9,
+    ASPECT_RATIO_NONE,
+    GUIDE_NONE,
+    GUIDE_THIRDS,
+)
 from framelabs.ui.live_view_widget import (
     ACTION_SAFE_RATIO,
     TITLE_SAFE_RATIO,
@@ -170,6 +176,68 @@ def test_set_safe_areas_visible_toggles_both_items():
     widget.set_safe_areas_visible(False)
     assert widget._action_safe_item.isVisible() is False
     assert widget._title_safe_item.isVisible() is False
+
+
+def test_composition_guide_item_starts_hidden():
+    widget = LiveViewWidget()
+
+    assert widget._composition_guide_item.isVisible() is False
+    assert widget._composition_guide_item.guide_type() == GUIDE_NONE
+
+
+def test_set_composition_guide_shows_and_hides_the_overlay():
+    widget = LiveViewWidget()
+
+    widget.set_composition_guide(GUIDE_THIRDS)
+    assert widget._composition_guide_item.isVisible() is True
+    assert widget._composition_guide_item.guide_type() == GUIDE_THIRDS
+
+    widget.set_composition_guide(GUIDE_NONE)
+    assert widget._composition_guide_item.isVisible() is False
+
+
+def test_aspect_ratio_guide_item_starts_hidden():
+    widget = LiveViewWidget()
+
+    assert widget._aspect_ratio_guide_item.isVisible() is False
+    assert widget._aspect_ratio_guide_item.ratio_type() == ASPECT_RATIO_NONE
+
+
+def test_set_aspect_ratio_guide_shows_and_hides_the_overlay():
+    widget = LiveViewWidget()
+
+    widget.set_aspect_ratio_guide(ASPECT_RATIO_16_9)
+    assert widget._aspect_ratio_guide_item.isVisible() is True
+    assert widget._aspect_ratio_guide_item.ratio_type() == ASPECT_RATIO_16_9
+
+    widget.set_aspect_ratio_guide(ASPECT_RATIO_NONE)
+    assert widget._aspect_ratio_guide_item.isVisible() is False
+
+
+def test_show_frame_updates_composition_and_aspect_ratio_guide_geometry():
+    widget = LiveViewWidget()
+    widget.resize(200, 150)
+
+    widget.show_frame(_real_png_bytes(200, 100))
+
+    assert widget._composition_guide_item.boundingRect().width() == 200
+    assert widget._composition_guide_item.boundingRect().height() == 100
+    assert widget._aspect_ratio_guide_item.boundingRect().width() == 200
+    assert widget._aspect_ratio_guide_item.boundingRect().height() == 100
+
+
+def test_composition_and_aspect_ratio_guides_are_independent():
+    widget = LiveViewWidget()
+
+    widget.set_composition_guide(GUIDE_THIRDS)
+    widget.set_aspect_ratio_guide(ASPECT_RATIO_16_9)
+
+    assert widget._composition_guide_item.guide_type() == GUIDE_THIRDS
+    assert widget._aspect_ratio_guide_item.ratio_type() == ASPECT_RATIO_16_9
+
+    # Turning one off shouldn't touch the other.
+    widget.set_composition_guide(GUIDE_NONE)
+    assert widget._aspect_ratio_guide_item.ratio_type() == ASPECT_RATIO_16_9
 
 
 def test_set_onion_layers_adds_before_and_after_layers():
