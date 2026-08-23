@@ -60,6 +60,7 @@ from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_browser_widget import ProjectBrowserWidget
 from framelabs.ui.project_controller import ProjectController
+from framelabs.ui.project_settings_dialog import ProjectSettingsDialog
 from framelabs.ui.theater_view_dialog import TheaterViewDialog
 from framelabs.ui.timeline_widget import (
     FrameActionBar,
@@ -191,6 +192,14 @@ class MainWindow(QMainWindow):
         self.delete_frame_action.setShortcuts(self._shortcuts("delete_frame"))
         self.delete_frame_action.triggered.connect(self._on_delete_frame)
 
+        # Edit menu: name/FPS/resolution/camera info for the active
+        # project. Guarded (no-op with a log line) rather than
+        # proactively disabled when there's no active project yet --
+        # same pattern as save_action/duplicate_frame_action above,
+        # not a special case.
+        self.project_settings_action = QAction("Project Settings...", self)
+        self.project_settings_action.triggered.connect(self._on_project_settings)
+
         self.play_action = QAction("Play", self)
         self.play_action.setShortcuts(self._shortcuts("play_pause"))
         self.play_action.triggered.connect(self._on_toggle_play)
@@ -318,6 +327,8 @@ class MainWindow(QMainWindow):
         # Temporary home for Duplicate Frame -- see _create_actions().
         edit_menu.addAction(self.duplicate_frame_action)
         edit_menu.addAction(self.delete_frame_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.project_settings_action)
 
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)
@@ -2200,6 +2211,27 @@ class MainWindow(QMainWindow):
         box.setText("Save Failed")
         box.setInformativeText(message)
         box.exec()
+
+    def _on_project_settings(self) -> None:
+        """Open the Project Settings dialog for the active project.
+
+        No-op with a log line if there's no active project yet -- same
+        guard pattern as _on_save_project(). ProjectSettingsDialog
+        writes its edited values directly onto self.project when Ok is
+        pressed (see its docstring), so on acceptance this just
+        reflects the possible name change in the window title and
+        persists the change immediately, the same way any other
+        project edit (e.g. Duplicate Frame) gets written to disk --
+        rather than silently leaving it only in memory until the next
+        manual Save.
+        """
+        if self.project is None:
+            logger.warning("Project Settings requested with no active project; ignoring")
+            return
+        dialog = ProjectSettingsDialog(self.project, self)
+        if dialog.exec():
+            self.setWindowTitle(f"FrameLabs — {self.project.name}")
+            self.project_controller.save_requested.emit(self.project)
 
     def _on_capture(self) -> None:
         """Request a capture on the worker thread.
