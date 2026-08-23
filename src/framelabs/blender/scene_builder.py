@@ -23,6 +23,7 @@ import json
 from pathlib import Path
 
 from framelabs.blender.exporter import BlenderExportError, BlenderManifest
+from framelabs.blender.sync_listener_script import generate_listener_script
 
 SCENE_SCRIPT_FILENAME = "generate_scene.py"
 
@@ -51,6 +52,10 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
             - stamps Project Metadata (project name, version, frame
               count) onto the scene as custom properties
             - saves the result to manifest.blend_output_path
+            - starts Feature 11's Live Blender Sync listener (see
+              sync_listener_script.py), unconditionally -- so enabling
+              Live Blender Sync later in the same session needs no
+              relaunch
     """
     frame_paths_literal = json.dumps(manifest.frame_paths)
     fps_literal = json.dumps(manifest.fps)
@@ -70,6 +75,12 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
         "import os",
         "",
         "import bpy",
+        "",
+        "# json is needed for Feature 11's Live Blender Sync listener",
+        "# (see the bottom of this script), not for scene construction",
+        "# itself -- imported here alongside os/bpy so both concerns",
+        "# share one import block at the top of the generated file.",
+        "import json",
         "",
         f"FRAME_PATHS = {frame_paths_literal}",
         f"FPS = {fps_literal}",
@@ -172,7 +183,7 @@ def generate_scene_script(manifest: BlenderManifest) -> str:
         "build_scene()",
         "",
     ]
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n" + generate_listener_script() + "\n"
 
 
 def write_scene_script(manifest: BlenderManifest, output_dir: Path) -> Path:

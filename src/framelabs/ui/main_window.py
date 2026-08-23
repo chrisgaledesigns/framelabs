@@ -39,6 +39,7 @@ from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
 from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.blender_controller import BlenderBridgeController
+from framelabs.ui.blender_sync_controller import BlenderSyncController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
 from framelabs.ui.composition_guides import (
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         self._start_autosave_controller()
         self._start_export_controller()
         self._start_blender_controller()
+        self._start_blender_sync_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
@@ -258,6 +260,15 @@ class MainWindow(QMainWindow):
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
         self.blender_action.triggered.connect(self._on_open_in_blender)
 
+        # Feature 11: only meaningful once "Open in Blender" has been
+        # run this session -- see _on_toggle_live_blender_sync(). Starts
+        # unchecked and disabled; re-enabled the moment a Blender bridge
+        # launch succeeds (_on_blender_bridge_succeeded()).
+        self.live_sync_action = QAction("Live Blender Sync", self)
+        self.live_sync_action.setCheckable(True)
+        self.live_sync_action.setEnabled(False)
+        self.live_sync_action.triggered.connect(self._on_toggle_live_blender_sync)
+
         self.previous_frame_action = QAction("Previous Frame", self)
         self.previous_frame_action.setShortcuts(self._shortcuts("previous_frame"))
         self.previous_frame_action.triggered.connect(self._on_previous_frame)
@@ -334,10 +345,10 @@ class MainWindow(QMainWindow):
 
         export_menu = menu_bar.addMenu("&Export")
         export_menu.addAction(self.export_render_action)
-
-        blender_menu = menu_bar.addMenu("&Blender")
-        blender_menu.addAction(self.blender_action)
-        blender_menu.addAction(self.export_action)
+        export_menu.addSeparator()
+        export_menu.addAction(self.blender_action)
+        export_menu.addAction(self.export_action)
+        export_menu.addAction(self.live_sync_action)
 
     def _build_central_panes(self) -> None:
         """Construct the full central area: the three-pane splitter on top,
@@ -573,7 +584,9 @@ class MainWindow(QMainWindow):
         A NINTH separate thread -- building the manifest/scene script and
         launching a real Blender process shouldn't contend with any of
         the other eight, same "UI Never Blocks" reasoning as every other
-        _start_x_controller() method above.
+        _start_x_controller() method above. (Feature 11's Live Blender
+        Sync is a further, TENTH thread of its own -- see
+        _start_blender_sync_controller().)
         """
         self._blender_thread = QThread(self)
         self.blender_controller = BlenderBridgeController(self.config)
@@ -600,6 +613,32 @@ class MainWindow(QMainWindow):
         )
 
         self._blender_thread.start()
+
+    def _start_blender_sync_controller(self) -> None:
+        """Create Feature 11's Live Blender Sync worker thread and wire
+        its signals.
+
+        A TENTH separate thread, deliberately distinct from
+        BlenderBridgeController's own -- see
+        blender_sync_controller.py's module docstring for why a slow
+        per-frame sync send must never contend with (or be contended by)
+        an "Open in Blender"/"Export .blend" launch.
+        """
+        self._blender_sync_thread = QThread(self)
+        self.blender_sync_controller = BlenderSyncController()
+        self.blender_sync_controller.moveToThread(self._blender_sync_thread)
+
+        self.blender_sync_controller.sync_connected.connect(
+            self._on_live_sync_connected
+        )
+        self.blender_sync_controller.sync_disconnected.connect(
+            self._on_live_sync_disconnected
+        )
+        self.blender_sync_controller.sync_connect_failed.connect(
+            self._on_live_sync_connect_failed
+        )
+
+        self._blender_sync_thread.start()
 
     def _on_autosave_timer_tick(self) -> None:
         """Fire one periodic autosave, per Feature 8's "every 30 seconds".
@@ -1151,9 +1190,20 @@ class MainWindow(QMainWindow):
         so this is log-only plus re-enabling the action, deliberately no
         dialog (would just be an extra click in front of the Blender
         window that's already opening).
+
+        Also the point Feature 11's Live Blender Sync becomes available:
+        live_sync_action is enabled here (having started disabled, per
+        its own comment in _create_actions()), and if it was already
+        checked from an earlier launch -- e.g. the user picked "Open
+        New Instance" after already_running -- reconnects to the fresh
+        listener automatically, since the old connection (if any) now
+        points at a Blender window that's no longer the current one.
         """
         self.blender_action.setEnabled(True)
         logger.info("Blender launched, scene will be saved to %s", blend_output_path)
+        self.live_sync_action.setEnabled(True)
+        if self.live_sync_action.isChecked() and self.project is not None:
+            self.blender_sync_controller.connect_requested.emit(self.project)
 
     def _on_blender_bridge_failed(self, message: str) -> None:
         """Report a Blender bridge failure that isn't the specific
@@ -1278,6 +1328,56 @@ class MainWindow(QMainWindow):
             "Blender Executable Remembered",
             'Click "Export .blend..." again to continue.',
         )
+
+    def _on_toggle_live_blender_sync(self, checked: bool) -> None:
+        """Feature 11: turn per-capture forwarding to Blender on or off.
+
+        Only ever reachable once live_sync_action has been enabled by
+        _on_blender_bridge_succeeded() -- "Open in Blender" must have
+        launched successfully at least once this session, since there
+        is otherwise no listener anywhere to connect to. Checking the
+        box asks BlenderSyncController to connect (or reconnect, if a
+        previous connection had since dropped); unchecking it
+        disconnects outright rather than merely gating future sends, so
+        no connection is left open in the background for no reason.
+        """
+        if checked:
+            if self.project is None or self.project.project_path is None:
+                self.live_sync_action.setChecked(False)
+                return
+            self.blender_sync_controller.connect_requested.emit(self.project)
+        else:
+            self.blender_sync_controller.disconnect_requested.emit()
+
+    def _on_live_sync_connected(self) -> None:
+        """Live Blender Sync is now connected to the launched Blender's
+        listener. Log-only plus reflecting the real state in the
+        checkbox -- no dialog, matching _on_blender_bridge_succeeded()'s
+        own "don't interrupt with a popup" reasoning.
+        """
+        logger.info("Live Blender Sync connected")
+        self.live_sync_action.setChecked(True)
+
+    def _on_live_sync_disconnected(self) -> None:
+        """The live-sync connection ended, whether by explicit user
+        request (unchecking the box) or because a send failed (e.g. the
+        user closed the Blender window mid-session) -- either way,
+        reflect "not connected" in the checkbox so it never shows
+        checked while nothing is actually listening.
+        """
+        logger.info("Live Blender Sync disconnected")
+        self.live_sync_action.setChecked(False)
+
+    def _on_live_sync_connect_failed(self, message: str) -> None:
+        """Connecting to Blender's live-sync listener failed outright
+        (e.g. discover_port() timed out). Unlike a mid-session
+        disconnect, this is surfaced with a dialog -- the user just
+        took an explicit action (checking the box) that visibly didn't
+        do what it promised, unlike a background send failure.
+        """
+        logger.error("Live Blender Sync connect failed: %s", message)
+        self.live_sync_action.setChecked(False)
+        QMessageBox.warning(self, "Live Blender Sync Failed", message)
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",
@@ -2029,6 +2129,15 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
         self._refresh_frame_action_bar()
+        # Feature 11: any existing live-sync connection points at the
+        # PREVIOUS project's Blender launch (a different project_path,
+        # therefore a different port file) -- never valid for whatever
+        # project was just adopted, so disconnect and require the user
+        # to run "Open in Blender" again for this one, same as if the
+        # app had just started.
+        self.blender_sync_controller.disconnect_requested.emit()
+        self.live_sync_action.setChecked(False)
+        self.live_sync_action.setEnabled(False)
 
     def _show_missing_frames_dialog(
         self, project: Project, missing_files: list
@@ -2129,6 +2238,15 @@ class MainWindow(QMainWindow):
         # on top of that, per autosave_controller.py's module docstring.
         if self.project is not None:
             self.autosave_controller.autosave_requested.emit(self.project)
+        # Feature 11: forward the new frame to Blender, but only if Live
+        # Blender Sync is actually on -- see BlenderSyncController's own
+        # module docstring for why this is a direct signal emission
+        # here rather than an EventBus subscription over on that
+        # controller's side.
+        if self.live_sync_action.isChecked() and self.project is not None:
+            self.blender_sync_controller.frame_sync_requested.emit(
+                self.project, frame_number
+            )
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.
@@ -2195,7 +2313,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all nine worker threads down cleanly before closing.
+        """Shut all ten worker threads down cleanly before closing.
 
         Sets self._shutting_down = True FIRST, before touching any thread.
         This closes a real race: PlaybackController.playhead_advanced is a
@@ -2267,5 +2385,11 @@ class MainWindow(QMainWindow):
         self._blender_thread.finished.connect(self.blender_controller.deleteLater)
         self._blender_thread.quit()
         self._blender_thread.wait(2000)
+
+        self._blender_sync_thread.finished.connect(
+            self.blender_sync_controller.deleteLater
+        )
+        self._blender_sync_thread.quit()
+        self._blender_sync_thread.wait(2000)
 
         super().closeEvent(event)
