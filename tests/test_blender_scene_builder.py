@@ -182,6 +182,27 @@ class TestGenerateSceneScript:
         assert "if FRAME_PATHS:\n        bg_image = bpy.data.images.load" in script
 
 
+class TestLiveSyncListenerIsAppended:
+    """Feature 11: the listener is appended to every generated scene
+    script, unconditionally -- see scene_listener_script.py's own tests
+    for the listener's own content in detail; these confirm it's
+    actually wired into generate_scene_script()'s output."""
+
+    def test_listener_starts_after_build_scene_runs(self):
+        script = generate_scene_script(_make_manifest())
+        build_scene_call_index = script.rindex("build_scene()")
+        listener_start_index = script.index("start_live_sync_listener()")
+        assert build_scene_call_index < listener_start_index
+
+    def test_json_imported_for_the_listener(self):
+        script = generate_scene_script(_make_manifest())
+        assert "import json" in script
+
+    def test_full_script_including_listener_compiles(self):
+        script = generate_scene_script(_make_manifest())
+        compile(script, "<generated_scene_script>", "exec")
+
+
 class TestWriteSceneScript:
     def test_writes_file_with_expected_name(self, tmp_path):
         output_dir = tmp_path / "cache" / "blender"
