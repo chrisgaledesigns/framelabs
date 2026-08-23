@@ -654,7 +654,7 @@
 
     <div class="hero hero-solo">
       <div class="eyebrow">Open source · stop-motion · Blender-native</div>
-<h1>Open source stop-motion software<br>made for <span class="blender-color">Blender</span>.</h1>      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Plug in a camera, shoot your sequence, and send it into Blender fully staged — camera, timeline, and frames included. No manual setup, no plugins to configure.</p>
+<h1>Open source stop-motion software<br>made for <span class="blender-color">Blender</span>.</h1>      <p class="lead">FrameLabs is an open-source capture app for stop-motion animators. Connect a camera, shoot frames, and open the project in Blender with the camera, timeline, and image sequence already set up.</p>
       <div class="hero-ctas">
         <a class="btn btn-primary" href="#home" data-page="home" data-scroll="download">Download FrameLabs</a>
         <a class="btn btn-outline" href="https://github.com/chrisgaledesigns/framelabs" target="_blank" rel="noopener">View Source</a>
@@ -679,42 +679,42 @@
     <div class="container">
       <div class="head-row">
         <div>
-          <div class="eyebrow">Built around the shot, not the software</div>
-          <h2>Everything a stop-motion set already needs</h2>
+          <div class="eyebrow">Feature specification</div>
+          <h2>Feature overview</h2>
         </div>
       </div>
-      <p class="section-sub">FrameLabs was designed against a full feature specification, animator-first. A few of the fourteen features that make it up:</p>
+      <p class="section-sub">FrameLabs is built against a 14-feature specification. Six of them, briefly:</p>
 
       <div class="feat-highlights">
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-3v10l-4-3"/></svg></div>
           <h3>Live Camera View</h3>
-          <p>Camera feed, onion skin, histogram, and safe areas together, holding 30+ FPS while you frame the shot.</p>
+          <p>Camera feed, onion skin, histogram, and safe area guides, targeting 30+ FPS.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
-          <h3>One-Press Capture</h3>
-          <p>Space bar to shoot. Frame appears in the timeline within a second, metadata and thumbnail already generated.</p>
+          <h3>Capture</h3>
+          <p>Space bar to shoot. The frame is written, thumbnailed, and added to the timeline within a second.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M4 6h16M4 18h10"/></svg></div>
           <h3>Onion Skin</h3>
-          <p>Adjustable previous/next frame counts, opacity falloff, and tint color — matched frame to frame, not just adjacent.</p>
+          <p>Adjustable previous/next frame counts and opacity, with distance-based falloff.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v6m0 6v6M3 12h6m6 0h6"/></svg></div>
           <h3>Autosave & Crash Recovery</h3>
-          <p>Silently autosaves after every capture and on a 30-second timer, never interrupting a shot. Crash-recovery lookup, snapshot pruning, and the on-restart recovery prompt are all built, tested, and wired in.</p>
+          <p>Autosaves after every capture and on a 30-second timer. On restart after a crash, it offers to restore the last autosave.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></div>
           <h3>Timeline</h3>
-          <p>Select, replace, duplicate, and delete frames with full undo — 100 actions minimum, always reversible.</p>
+          <p>Select, replace, duplicate, and delete frames. 100 actions of undo history, minimum.</p>
         </div>
         <div class="fh-card">
           <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l16 8-16 8V4z"/></svg></div>
           <h3>Open in Blender</h3>
-          <p>One button. Camera, timeline, image sequence, and compositor are generated for you — no manual setup, ever.</p>
+          <p>Builds the camera, timeline, image sequence, and compositor in a new Blender scene automatically.</p>
           <span class="flag">★ FLAGSHIP FEATURE</span>
         </div>
       </div>
@@ -727,8 +727,8 @@
   <section style="padding-top:0;">
     <div class="container">
       <div class="eyebrow">The main window</div>
-      <h2>One screen, everything in reach</h2>
-      <p class="section-sub">Camera settings, project browser, and timeline sit around a live view that never drops frames — so you're always looking at the shot, not hunting for a menu.</p>
+      <h2>Main window layout</h2>
+      <p class="section-sub">Camera settings, project browser, and timeline around a live view, plus a menu bar and toolbar.</p>
       <div class="mockup">
         <div class="bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
         <div class="mockup-grid">
@@ -762,8 +762,8 @@
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">BUILD</text>
         </svg>
         <div class="rt-body">
-          <h3>Phases 0–7 are closed — the Blender Bridge is done, including Live Sync. Packaging and GitHub polish are next</h3>
-          <p>669 tests passing, 8 of 10 roadmap phases fully closed. Feature 10 (Blender Export) — including Output Settings and Project Metadata — and Feature 11 (Live Blender Sync) are both confirmed working end-to-end in an installed Blender. Every session's real progress — including what broke and what's still stubbed — gets posted, not just the wins.</p>
+          <h3>Phases 0–7 are closed, including the Blender bridge and Live Sync. Packaging and GitHub polish are next</h3>
+          <p>669 tests passing, 8 of 10 roadmap phases closed. Feature 10 (Blender Export) and Feature 11 (Live Blender Sync) are both confirmed working in an installed Blender.</p>
           <div class="rt-track">
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div>
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node mid">8</div><div class="rt-node">9</div>
@@ -782,7 +782,7 @@
           <h2 style="margin-bottom:0;">Run it today, from source</h2>
           <span class="pill pill-mid">PRE-ALPHA · MAIN BRANCH</span>
         </div>
-        <p class="section-sub" style="margin-bottom:26px;">FrameLabs is in active development in the open. Signed, one-click installers are planned for Phase 8 — you can track that work live. Until then, running from source takes about two minutes on any of the three target platforms.</p>
+        <p class="section-sub" style="margin-bottom:26px;">Packaged installers are planned for Phase 8. Until then, running from source takes about two minutes on Windows, macOS, or Linux.</p>
 
         <div class="os-grid">
           <div class="os-card">
@@ -822,56 +822,56 @@ framelabs
 <main class="site-page" id="page-about">
   <div class="container">
     <div class="page-hero">
-      <div class="eyebrow">Meet FrameLabs</div>
-      <h1>Stop-motion capture made simple, modern, and open</h1>
-      <p>Whether you're making your very first brickfilm or animating a professional sequence, FrameLabs bridges the gap between your physical camera set and your digital post-production workflow in Blender.</p>
+      <div class="eyebrow">About</div>
+      <h1>What FrameLabs is</h1>
+      <p>FrameLabs is a capture app for stop-motion animation that opens directly into Blender, with the camera, timeline, and image sequence already set up.</p>
     </div>
 
     <div class="about-hero-box">
-      <h2>Why FrameLabs?</h2>
-      <p>Traditional stop-motion tools are often either expensive proprietary suites or clunky utilities that require manual file exports, complicated folder management, and repetitive Blender setup steps.</p>
-      <p>FrameLabs changes that. It's an open-source, animator-first capture studio built from the ground up to link directly into Blender. You frame your physical shot, hit capture, and let FrameLabs handle image writing, thumbnail generation, non-destructive timeline editing, and instant scene generation.</p>
+      <h2>Why it exists</h2>
+      <p>Most stop-motion capture tools stop at the camera: you shoot your frames, then manually export, organize folders, and rebuild the scene in Blender by hand.</p>
+      <p>FrameLabs handles that handoff. You capture a frame, and it writes the image, generates a thumbnail, updates the timeline, and — when you're ready — builds the Blender scene for you.</p>
     </div>
 
     <div class="how-it-works">
-      <h3>How the Workflow Works</h3>
+      <h3>Workflow</h3>
       <ol>
-        <li><b>Plug in your camera:</b> FrameLabs hooks directly into webcams, DSLRs, or libcamera setups with zero configuration needed.</li>
-        <li><b>Capture your shot:</b> Press Space to capture a frame. Your shot is verified, saved as a high-res PNG, thumbnailed, and appended to your timeline in under a second.</li>
-        <li><b>Refine on set:</b> Use built-in tools like onion skin overlays, histogram displays, frame toggles, and safe area guides to perfect your movement frame by frame.</li>
-        <li><b>Bridge to Blender:</b> Press one button to open Blender. FrameLabs builds your scene automatically — generating your camera setup, importing your image sequence, configuring output settings, and setting up the compositor.</li>
+        <li><b>Connect a camera:</b> FrameLabs detects webcams on startup (DSLR/libcamera support is planned, see Roadmap).</li>
+        <li><b>Capture a frame:</b> Press Space. The frame is verified, saved as PNG, thumbnailed, and added to the timeline in under a second.</li>
+        <li><b>Review on set:</b> Onion skin, a histogram, and safe-area guides are available while shooting.</li>
+        <li><b>Open in Blender:</b> One button saves the project, launches Blender, and builds the scene — camera, image sequence, compositor, and output settings.</li>
       </ol>
     </div>
 
     <div class="about-grid">
       <div class="about-card">
-        <span class="badge">Open Source Forever</span>
-        <h3>Free &amp; Community Driven</h3>
-        <p>FrameLabs is completely free and licensed under GPL-3.0. Developed transparently by Chris (chrisgaledesigns) alongside Claude, every line of code, test case, and roadmap status report is open for the community to inspect, use, and build upon.</p>
+        <span class="badge">License</span>
+        <h3>Free and open source</h3>
+        <p>FrameLabs is licensed under GPL-3.0. Development happens in the open — code, tests, and roadmap status are all public.</p>
       </div>
 
       <div class="about-card">
-        <span class="badge">Animator-First Principles</span>
-        <h3>Your Data is Sacred</h3>
-        <p>A physical frame captured on set is irreplaceable. FrameLabs adheres to strict engineering guarantees: UI operations run in background workers, background autosaves silently run after every capture, and all timeline edits come with 100+ steps of full, file-safe undo history.</p>
+        <span class="badge">Design principle</span>
+        <h3>Captured frames aren't replaceable</h3>
+        <p>UI operations run in background workers so the interface doesn't block. Autosave runs after every capture. Timeline edits have at least 100 steps of undo history.</p>
       </div>
 
       <div class="about-card">
-        <span class="badge">Cross-Platform</span>
-        <h3>Works Wherever You Do</h3>
-        <p>Built using Python 3.12+ and PySide6, FrameLabs runs natively on Windows, macOS, and Linux. It delivers buttery-smooth 60 FPS UI performance and 30+ FPS live preview feeds across all platforms.</p>
+        <span class="badge">Platforms</span>
+        <h3>Windows, macOS, Linux</h3>
+        <p>Built on Python 3.12+ and PySide6. Targets 60 FPS UI and 30+ FPS live preview on all three.</p>
       </div>
 
       <div class="about-card">
-        <span class="badge">Transparent Progress</span>
-        <h3>80% Complete &amp; Counting</h3>
-        <p>We don't hide our progress. 8 out of 10 roadmap phases are closed, and Phase 7 (the Blender Bridge, including Live Sync) is fully built and confirmed working in real Blender, supported by 669 automated tests passing continuously. You can trace every single commit, feature release, and build session on our Live Updates page.</p>
+        <span class="badge">Status</span>
+        <h3>80% through the roadmap</h3>
+        <p>8 of 10 roadmap phases are closed. Phase 7 (the Blender bridge, including Live Sync) is done and confirmed working in real Blender, backed by 669 automated tests. See the Live Updates page for detail.</p>
       </div>
     </div>
 
     <div style="text-align:center; padding: 20px 0 60px 0;">
-      <a class="btn btn-primary" href="#features" data-page="features">Explore All 14 Features</a>
-      <a class="btn btn-outline" href="#docs" data-page="docs" style="margin-left: 12px;">Read Technical Docs</a>
+      <a class="btn btn-primary" href="#features" data-page="features">See all 14 features</a>
+      <a class="btn btn-outline" href="#docs" data-page="docs" style="margin-left: 12px;">Read the docs</a>
     </div>
 
   </div>
@@ -882,8 +882,8 @@ framelabs
   <div class="container">
     <div class="page-hero">
       <div class="eyebrow">Feature specification</div>
-      <h1>Fourteen features. One workflow.</h1>
-      <p>Every feature below traces back to FrameLabs' feature specification — the same document driving development. Status badges are pulled straight from the current build; see <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> for the detail behind each one. Click any feature to see its workflow, acceptance criteria, and edge cases.</p>
+      <h1>All 14 features</h1>
+      <p>Status is checked against the current build. Click a feature to see its workflow, acceptance criteria, and edge cases.</p>
     </div>
 
     <section style="padding-top:0;">
@@ -1217,8 +1217,8 @@ framelabs
   <div class="container">
     <div class="page-hero">
       <div class="eyebrow">Developer handbook</div>
-      <h1>Built to be understood, not just used</h1>
-      <p>FrameLabs' Developer Handbook is the source of truth for implementation decisions — if code conflicts with it, the handbook wins. Here's the shape of it.</p>
+      <h1>Developer documentation</h1>
+      <p>The Developer Handbook is the source of truth for implementation decisions — if code conflicts with it, the handbook wins. Here's the shape of it.</p>
     </div>
 
     <section style="padding-top:0;">
