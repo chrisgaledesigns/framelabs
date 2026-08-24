@@ -25,6 +25,22 @@ persists across set_project() calls within the same widget instance
 NOT saved anywhere (a fresh ProjectBrowserWidget always starts on
 Frames).
 
+Only four of the six sections -- Frames, Audio, Notes, Exports -- get a
+visible tab button in that row, matching Chris's mockup exactly.
+References and Overlays instead live behind a trailing overflow
+("burger", \u2630) button at the end of the row: clicking it opens a menu
+listing References and Overlays, and picking either just checks that
+section's own (still-real, still in _section_button_group, just never
+added to the tab row's layout) _SectionHeader -- see
+_on_overflow_action_triggered(). That reuses every bit of the exclusive-
+group/_on_section_toggled machinery the four visible tabs already use,
+so References/Overlays behave identically to a "real" tab once selected;
+the only thing that's different is how you get there. Because neither
+header is ever shown, the overflow button itself doubles as their tab
+in the row -- see _update_overflow_button_state() for how it borrows the
+active section's name and a checked/accent look whenever References or
+Overlays is the one currently showing.
+
 Frames renders as a real thumbnail grid (QListWidget in IconMode), not a
 text list, per Chris's explicit choice after seeing the first version --
 this is why Frames uses a different widget type than the text-list
@@ -97,6 +113,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -120,24 +137,74 @@ _FRAME_INDEX_ROLE = Qt.ItemDataRole.UserRole
 # the Frames grid and Notes list above.
 _ASSET_PATH_ROLE = Qt.ItemDataRole.UserRole
 
-# Grid tile size for the Frames thumbnail grid. Deliberately smaller than
-# TimelineWidget's THUMBNAIL_DISPLAY_HEIGHT (100px) -- this panel lives in
-# the narrow side splitter (main_window.py's setSizes() gives it ~250px),
-# so tiles need to be small enough that more than one fits per row.
-FRAME_TILE_SIZE = 72
+# Grid tile size for the Frames thumbnail grid, per Chris's mockup: a
+# landscape (not square) tile close to the captured frame's own aspect,
+# sized so three columns comfortably fit the panel's default width
+# (main_window.py's setSizes() gives Project Browser ~300px). Kept as two
+# constants -- rather than one square FRAME_TILE_SIZE like before -- since
+# a square icon box would letterbox every landscape thumbnail instead of
+# filling the tile the way the mockup shows.
+FRAME_TILE_WIDTH = 80
+FRAME_TILE_HEIGHT = 50
+
+# Kept for backward compatibility with callers that just want "a tile
+# dimension" (e.g. requesting a QPixmap off a QIcon at a single size) --
+# equal to the tile's width, the larger of the two dimensions.
+FRAME_TILE_SIZE = FRAME_TILE_WIDTH
 
 # The three asset kinds sharing one generic list-section implementation,
 # in display order. Matches Project.audio/references/overlays' attribute
 # names directly, so getattr(project, kind) always resolves correctly.
 _ASSET_KINDS = ("audio", "references", "overlays")
 
-# Every section, in tab order left to right. Matches the keys used in
-# _section_headers/_section_content below.
+# Every section this panel knows about. Matches the keys used in
+# _section_headers/_section_content below. Order here drives nothing
+# visual by itself -- see _TAB_SECTION_KEYS/_OVERFLOW_SECTION_KEYS below
+# for the order/grouping that actually reaches the screen.
 _SECTION_KEYS = ("frames", "audio", "references", "overlays", "notes", "exports")
+
+# The sections shown as real tab buttons in the horizontal tab row, per
+# Chris's mockup -- References and Overlays are deliberately left off
+# this row (see _OVERFLOW_SECTION_KEYS) so the row itself matches the
+# four-tab mockup exactly instead of all six sections competing for the
+# same narrow strip.
+_TAB_SECTION_KEYS = ("frames", "audio", "notes", "exports")
+
+# The sections tucked behind the tab row's overflow ("burger") button
+# instead of getting their own tab button. References and Overlays are
+# used far less often than Frames/Audio/Notes/Exports, and Chris's
+# mockup only shows four tabs, so these two move into the overflow menu
+# rather than crowding the row -- selecting either from that menu still
+# activates the exact same header/content pair used for the other four,
+# via _on_overflow_action_triggered().
+_OVERFLOW_SECTION_KEYS = ("references", "overlays")
 
 # The section shown by default when a project opens -- see module
 # docstring for why Frames specifically.
 _DEFAULT_ACTIVE_SECTION = "frames"
+
+
+def _fill_tile(pixmap: QPixmap) -> QPixmap:
+    """Scale+crop `pixmap` to exactly FRAME_TILE_WIDTH x FRAME_TILE_HEIGHT.
+
+    Matches the mockup, where every thumbnail fills its tile edge-to-edge
+    with no letterboxing -- KeepAspectRatio (the old behavior) would
+    shrink a landscape frame to fit inside the box and leave bars on the
+    two remaining sides instead. KeepAspectRatioByExpanding fills the box
+    but overshoots one dimension, so the overshoot is center-cropped away
+    afterward; the result is always exactly tile-sized, so QIcon never
+    has to re-scale it again when the grid asks for FRAME_TILE_WIDTH x
+    FRAME_TILE_HEIGHT at paint time.
+    """
+    scaled = pixmap.scaled(
+        FRAME_TILE_WIDTH,
+        FRAME_TILE_HEIGHT,
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    x = max(0, (scaled.width() - FRAME_TILE_WIDTH) // 2)
+    y = max(0, (scaled.height() - FRAME_TILE_HEIGHT) // 2)
+    return scaled.copy(x, y, FRAME_TILE_WIDTH, FRAME_TILE_HEIGHT)
 
 
 class _SectionHeader(QPushButton):
@@ -245,7 +312,7 @@ class ProjectBrowserWidget(QWidget):
         self._frames_grid.setViewMode(QListWidget.ViewMode.IconMode)
         self._frames_grid.setResizeMode(QListWidget.ResizeMode.Adjust)
         self._frames_grid.setMovement(QListWidget.Movement.Static)
-        self._frames_grid.setIconSize(QSize(FRAME_TILE_SIZE, FRAME_TILE_SIZE))
+        self._frames_grid.setIconSize(QSize(FRAME_TILE_WIDTH, FRAME_TILE_HEIGHT))
         self._frames_grid.setSpacing(4)
         self._frames_grid.itemDoubleClicked.connect(
             self._on_frames_grid_item_double_clicked
@@ -319,11 +386,40 @@ class ProjectBrowserWidget(QWidget):
         for key in _SECTION_KEYS:
             self._section_button_group.addButton(self._section_headers[key])
 
+        # References/Overlays keep their _SectionHeader (they still need
+        # one to stay in the exclusive button group and to drive
+        # _on_section_toggled exactly like every other section), but that
+        # header never joins the tab row layout -- explicitly reparenting
+        # it to this widget (rather than a layout) keeps it a normal
+        # hidden child instead of an orphaned top-level window, and it
+        # stays hidden permanently; see _on_overflow_action_triggered.
+        for key in _OVERFLOW_SECTION_KEYS:
+            header = self._section_headers[key]
+            header.setParent(self)
+            header.hide()
+
+        # The overflow ("burger") button: everything NOT in the four-tab
+        # mockup lives behind this one menu instead of its own tab, per
+        # Chris's explicit choice to keep the tab row matching the
+        # mockup exactly rather than fitting all six sections across it.
+        self._overflow_button = QPushButton("\u2630")
+        self._overflow_button.setObjectName("projectBrowserOverflowButton")
+        self._overflow_button.setFlat(True)
+        self._overflow_button.setCheckable(True)
+        self._overflow_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._overflow_button.setToolTip("More sections (References, Overlays)")
+        overflow_menu = QMenu(self._overflow_button)
+        for key in _OVERFLOW_SECTION_KEYS:
+            action = overflow_menu.addAction(self._section_headers[key]._title)
+            action.triggered.connect(partial(self._on_overflow_action_triggered, key))
+        self._overflow_button.setMenu(overflow_menu)
+
         tab_row = QHBoxLayout()
         tab_row.setSpacing(2)
-        for key in _SECTION_KEYS:
+        for key in _TAB_SECTION_KEYS:
             tab_row.addWidget(self._section_headers[key])
         tab_row.addStretch(1)
+        tab_row.addWidget(self._overflow_button)
         layout.addLayout(tab_row)
 
         # Content widgets all share the same row in the layout below the
@@ -338,7 +434,9 @@ class ProjectBrowserWidget(QWidget):
             header = self._section_headers[key]
             header.set_expanded(key == _DEFAULT_ACTIVE_SECTION)
             header.toggled.connect(partial(self._on_section_toggled, key))
+            header.toggled.connect(self._update_overflow_button_state)
 
+        self._update_overflow_button_state()
         self._show_no_project()
 
     def _section_widgets(self) -> tuple[QWidget, ...]:
@@ -353,6 +451,7 @@ class ProjectBrowserWidget(QWidget):
     def _show_no_project(self) -> None:
         """Show only the placeholder row; hide every real section."""
         self._no_project_label.setVisible(True)
+        self._overflow_button.setVisible(False)
         for widget in self._section_widgets():
             widget.setVisible(False)
         self._frames_grid.clear()
@@ -386,8 +485,14 @@ class ProjectBrowserWidget(QWidget):
             return
 
         self._no_project_label.setVisible(False)
+        self._overflow_button.setVisible(True)
         for key in _SECTION_KEYS:
-            self._section_headers[key].setVisible(True)
+            # References/Overlays' headers stay permanently hidden (see
+            # __init__) -- only the four tab-row sections get a visible
+            # header button; the overflow menu is how References/Overlays
+            # get activated instead.
+            if key in _TAB_SECTION_KEYS:
+                self._section_headers[key].setVisible(True)
             self._section_content[key].setVisible(
                 self._section_headers[key].isChecked()
             )
@@ -409,6 +514,44 @@ class ProjectBrowserWidget(QWidget):
         if self._no_project_label.isVisible():
             return
         self._section_content[key].setVisible(expanded)
+
+    def _on_overflow_action_triggered(self, key: str) -> None:
+        """Activate References or Overlays from the overflow menu.
+
+        Just checks that section's (permanently hidden) header -- the
+        exclusive _section_button_group then deactivates whichever tab
+        was previously checked, and the header's own toggled signal
+        drives _on_section_toggled exactly as if a visible tab had been
+        clicked. No separate show/hide logic needed here.
+        """
+        self._section_headers[key].setChecked(True)
+
+    def _update_overflow_button_state(self) -> None:
+        """Keep the burger button's checked look and label in sync with
+        whichever section is actually active.
+
+        Runs on every header's toggled signal (see __init__): if the
+        newly-active section is one of the overflow ones, the burger
+        button itself becomes the visual stand-in for "the active tab"
+        (checked, labeled with that section's name) since neither
+        References' nor Overlays' own header is ever shown in the row.
+        Otherwise the burger button just reads as an untoggled, generic
+        "more sections" affordance.
+        """
+        active_overflow_key = next(
+            (
+                key
+                for key in _OVERFLOW_SECTION_KEYS
+                if self._section_headers[key].isChecked()
+            ),
+            None,
+        )
+        self._overflow_button.setChecked(active_overflow_key is not None)
+        if active_overflow_key is not None:
+            title = self._section_headers[active_overflow_key]._title
+            self._overflow_button.setText(f"\u2630 {title}")
+        else:
+            self._overflow_button.setText("\u2630")
 
     @staticmethod
     def _ordered_frames(project: Project) -> list:
@@ -448,13 +591,7 @@ class ProjectBrowserWidget(QWidget):
                 thumbnail_path = thumbnails_dir / f"{frame.number:06d}.jpg"
                 pixmap = QPixmap(str(thumbnail_path))
                 if not pixmap.isNull():
-                    pixmap = pixmap.scaled(
-                        FRAME_TILE_SIZE,
-                        FRAME_TILE_SIZE,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                    item.setIcon(QIcon(pixmap))
+                    item.setIcon(QIcon(_fill_tile(pixmap)))
             self._frames_grid.addItem(item)
 
     def _build_asset_list(self, kind: str, project: Project) -> None:
