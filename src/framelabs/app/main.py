@@ -34,13 +34,13 @@ def main() -> None:
 
     splash = FrameLabsSplashScreen()
     splash.show()
-    splash.show_status("Loading plugins...")
+    splash.show_random_status()
     app.processEvents()
 
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
 
-    splash.show_status("Preparing workspace...")
+    splash.show_random_status()
     app.processEvents()
 
     # Constructed once here and shared with both the Welcome dialog

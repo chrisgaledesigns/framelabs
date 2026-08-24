@@ -1,7 +1,7 @@
 """Tests for FrameLabsSplashScreen in ui/splash_screen.py.
 
-A real QSplashScreen is built, using the real branded_pixmap() /
-Logo_Horizontal.png (already covered by test_branding.py) since there's
+A real QSplashScreen is built, using the real hero_banner_pixmap() /
+find_hero_image() (already covered by test_branding.py) since there's
 nothing worth mocking here -- this class's whole job is a couple of
 window-flag calls and a styled showMessage() wrapper.
 """
@@ -9,6 +9,7 @@ window-flag calls and a styled showMessage() wrapper.
 from PySide6.QtCore import Qt
 
 from framelabs.ui.splash_screen import (
+    IDIOMS,
     SPLASH_HEIGHT,
     SPLASH_WIDTH,
     FrameLabsSplashScreen,
@@ -43,3 +44,24 @@ def test_show_status_does_not_raise():
     splash = FrameLabsSplashScreen()
 
     splash.show_status("Loading plugins...")  # should not raise
+
+
+def test_show_random_status_picks_from_idioms():
+    """show_random_status() should always land on one of IDIOMS."""
+    splash = FrameLabsSplashScreen()
+
+    for _ in range(20):
+        splash.show_random_status()
+        assert splash._last_idiom in IDIOMS
+
+
+def test_show_random_status_never_repeats_back_to_back():
+    """main.py calls this twice in a row; the two picks should never be
+    the same idiom, so the status line visibly changes both times."""
+    splash = FrameLabsSplashScreen()
+
+    for _ in range(50):
+        splash.show_random_status()
+        previous = splash._last_idiom
+        splash.show_random_status()
+        assert splash._last_idiom != previous
