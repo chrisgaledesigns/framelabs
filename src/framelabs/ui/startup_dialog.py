@@ -8,6 +8,12 @@ than reimplementing any of its validation/creation logic here. No
 dialog-specific styling is applied here -- app/main.py's app-wide
 theme.STYLESHEET (QDialog, QPushButton, QListWidget, ...) already
 covers it.
+
+Layout: a full-bleed hero photo banner (see branding.hero_banner_pixmap)
+with the logo and version badge overlaid on it, Recent Projects below
+that, and New/Open/Open Selected along the bottom -- no separate Quit
+button, since the dialog's own close box / Esc already reject() it the
+same way a Quit button would.
 """
 
 from __future__ import annotations
@@ -29,11 +35,18 @@ from PySide6.QtWidgets import (
 
 from framelabs.core.config import Config
 from framelabs.project.project import Project
-from framelabs.ui.branding import branded_pixmap
+from framelabs.ui.branding import current_version_text, find_hero_image, hero_banner_pixmap
 from framelabs.ui.new_project_dialog import NewProjectDialog
 
-BANNER_WIDTH = 520
-BANNER_HEIGHT = 140
+HERO_WIDTH = 600
+HERO_HEIGHT = 300
+
+# Recent Projects hugs its actual item count instead of reserving a
+# fixed block of space -- a couple of entries shouldn't leave a wall
+# of empty dark panel between the list and the buttons below it. Caps
+# out at MAX_VISIBLE_RECENT_ROWS tall and scrolls beyond that, so a
+# long history doesn't grow the dialog unboundedly instead.
+MAX_VISIBLE_RECENT_ROWS = 5
 
 
 class StartupDialog(QDialog):
@@ -52,7 +65,7 @@ class StartupDialog(QDialog):
     def __init__(self, config: Config, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Welcome to FrameLabs")
-        self.setMinimumWidth(BANNER_WIDTH)
+        self.setMinimumWidth(HERO_WIDTH)
         self._config = config
         self.new_project: Project | None = None
         self.chosen_path: Path | None = None
@@ -63,37 +76,29 @@ class StartupDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 16)
         layout.setSpacing(12)
 
-        banner = QLabel()
-        banner.setPixmap(branded_pixmap(BANNER_WIDTH, BANNER_HEIGHT, logo_scale=0.55))
-        banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(banner)
-
-        action_row = QHBoxLayout()
-        action_row.setContentsMargins(16, 0, 16, 0)
-
-        new_button = QPushButton("New Project...")
-        new_button.setMinimumHeight(36)
-        new_button.clicked.connect(self._on_new_project)
-        action_row.addWidget(new_button)
-
-        open_button = QPushButton("Open Project...")
-        open_button.setMinimumHeight(36)
-        open_button.clicked.connect(self._on_open_project)
-        action_row.addWidget(open_button)
-
-        layout.addLayout(action_row)
+        hero = QLabel()
+        hero.setPixmap(
+            hero_banner_pixmap(
+                HERO_WIDTH,
+                HERO_HEIGHT,
+                image_path=find_hero_image(),
+                version_text=current_version_text(),
+            )
+        )
+        hero.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(hero)
 
         recent_label = QLabel("Recent Projects")
-        recent_label.setContentsMargins(16, 8, 16, 0)
+        recent_label.setContentsMargins(16, 4, 16, 0)
         layout.addWidget(recent_label)
 
         self._recent_list = QListWidget()
-        self._recent_list.setMinimumHeight(140)
         self._recent_list.itemDoubleClicked.connect(self._on_recent_item_chosen)
         self._recent_list.itemSelectionChanged.connect(
             self._update_open_selected_enabled
         )
         self._populate_recent_projects()
+        self._size_recent_list_to_content()
 
         recent_row = QHBoxLayout()
         recent_row.setContentsMargins(16, 0, 16, 0)
@@ -102,6 +107,7 @@ class StartupDialog(QDialog):
 
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(16, 0, 16, 0)
+        bottom_row.setSpacing(8)
 
         self._open_selected_button = QPushButton("Open Selected")
         self._open_selected_button.setEnabled(False)
@@ -109,11 +115,35 @@ class StartupDialog(QDialog):
         bottom_row.addWidget(self._open_selected_button)
         bottom_row.addStretch()
 
-        quit_button = QPushButton("Quit")
-        quit_button.clicked.connect(self.reject)
-        bottom_row.addWidget(quit_button)
+        new_button = QPushButton("New Project...")
+        new_button.setMinimumHeight(36)
+        new_button.setDefault(True)
+        new_button.clicked.connect(self._on_new_project)
+        bottom_row.addWidget(new_button)
+
+        open_button = QPushButton("Open Project...")
+        open_button.setMinimumHeight(36)
+        open_button.clicked.connect(self._on_open_project)
+        bottom_row.addWidget(open_button)
 
         layout.addLayout(bottom_row)
+
+    def _size_recent_list_to_content(self) -> None:
+        """Fix the list's height to its actual row count (capped).
+
+        Called once, right after populating -- this list's contents
+        never change afterward, so a one-time fixed height (rather
+        than a fixed minimum reserving space no matter the count) is
+        enough to keep it hugging 1-2 real entries as tightly as it
+        hugs the single "No recent projects yet" placeholder.
+        """
+        count = max(self._recent_list.count(), 1)
+        visible_rows = min(count, MAX_VISIBLE_RECENT_ROWS)
+        row_height = self._recent_list.sizeHintForRow(0)
+        if row_height <= 0:
+            row_height = self._recent_list.fontMetrics().height() + 12
+        frame = 2 * self._recent_list.frameWidth()
+        self._recent_list.setFixedHeight(row_height * visible_rows + frame + 4)
 
     def _populate_recent_projects(self) -> None:
         """Fill the Recent Projects list from Config.

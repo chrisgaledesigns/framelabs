@@ -16,6 +16,9 @@ BORDER = "#22323f"
 BORDER_SOFT = "#182530"
 ACCENT = "#00bc90"          # selection border, active states, highlights
 ACCENT_DIM = "#0a3d31"       # accent at low opacity feel, for subtle fills
+ACCENT_YELLOW = "#ffe800"    # logo's "LABS" wordmark yellow -- used sparingly
+                              # on pre-launch screens (e.g. version badge)
+                              # over the hero photo, never in-app chrome.
 TEXT_PRIMARY = "#eef2f5"
 TEXT_SECONDARY = "#7c8b98"  # menu items, section labels, field labels
 TEXT_DISABLED = "#455563"
