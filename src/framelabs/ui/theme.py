@@ -20,8 +20,20 @@ TEXT_PRIMARY = "#eef2f5"
 TEXT_SECONDARY = "#7c8b98"  # menu items, section labels, field labels
 TEXT_DISABLED = "#455563"
 
+# Corner radii. Pro tools (Blender, Resolve, After Effects) round just
+# enough to soften a hard edge -- nowhere near a pill shape. Buttons and
+# fields get the tightest radius; menus/popovers/panels get one step up
+# since a bigger shape reads better with slightly more curve.
+RADIUS_TIGHT = "3px"   # buttons, inputs, list rows, checkboxes
+RADIUS_PANEL = "4px"   # menus, popups, tooltips, the live-view frame
+
+# Sans-serif, tuned for small UI sizes rather than a document face --
+# Inter/SF/Segoe/Roboto are all designed with tall x-heights and open
+# counters that stay legible at 12px, unlike the monospace stack this
+# theme used to use.
 FONT_FAMILY = (
-    '"JetBrains Mono", "Cascadia Code", "Consolas", "SF Mono", "Menlo", monospace'
+    '"Inter", "SF Pro Text", "Segoe UI", "Roboto", "Helvetica Neue", '
+    '"DejaVu Sans", Arial, sans-serif'
 )
 
 STYLESHEET = f"""
@@ -44,7 +56,7 @@ QMenuBar {{
 QMenuBar::item {{
     background: transparent;
     padding: 5px 12px;
-    border-radius: 5px;
+    border-radius: {RADIUS_TIGHT};
     margin: 0 1px;
 }}
 QMenuBar::item:selected {{
@@ -56,11 +68,11 @@ QMenu {{
     border: 1px solid {BORDER};
     color: {TEXT_PRIMARY};
     padding: 6px;
-    border-radius: 8px;
+    border-radius: {RADIUS_PANEL};
 }}
 QMenu::item {{
     padding: 7px 26px 7px 14px;
-    border-radius: 5px;
+    border-radius: {RADIUS_TIGHT};
 }}
 QMenu::item:selected {{
     background-color: {ACCENT};
@@ -84,7 +96,7 @@ QSplitter::handle:hover {{
 QGraphicsView#liveViewWidget {{
     background-color: {BG_CANVAS};
     border: 1px solid {BORDER_SOFT};
-    border-radius: 10px;
+    border-radius: {RADIUS_PANEL};
 }}
 
 /* Side panels: project browser + inspector */
@@ -94,20 +106,24 @@ QGraphicsView#liveViewWidget {{
 }}
 
 QPushButton {{
-    background-color: {BG_PANEL};
+    background-color: {BG_PANEL_RAISED};
     border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 6px 14px;
+    border-radius: {RADIUS_TIGHT};
+    padding: 7px 16px;
     color: {TEXT_PRIMARY};
+    font-weight: 400;
 }}
 QPushButton:hover {{
     background-color: {BG_PANEL_HOVER};
-    border-color: {ACCENT};
+    border-color: #3c5468;
 }}
 QPushButton:pressed {{
     background-color: {BORDER};
+    padding-top: 8px;
+    padding-bottom: 6px;
 }}
 QPushButton:disabled {{
+    background-color: {BG_PANEL};
     color: {TEXT_DISABLED};
     border-color: {BORDER_SOFT};
 }}
@@ -121,7 +137,7 @@ QPushButton:flat {{
     border: none;
     color: {TEXT_SECONDARY};
     text-align: left;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 12px;
     padding: 10px 4px;
 }}
@@ -129,52 +145,168 @@ QPushButton:flat:hover {{
     color: {TEXT_PRIMARY};
 }}
 
+/* Primary/default action -- the button a dialog's Enter key triggers
+   (Create, Save, Ok, ...). Solid accent fill so the one action most
+   people want stands out from every neutral button around it, instead
+   of every button in a dialog competing at the same visual weight. */
+QPushButton:default {{
+    background-color: {ACCENT};
+    border: 1px solid {ACCENT};
+    color: {BG_WINDOW};
+    font-weight: 500;
+}}
+QPushButton:default:hover {{
+    background-color: #0fc294;
+    border-color: #0fc294;
+}}
+QPushButton:default:pressed {{
+    background-color: #009973;
+    border-color: #009973;
+}}
+QPushButton:default:disabled {{
+    background-color: {BG_PANEL};
+    border-color: {BORDER_SOFT};
+    color: {TEXT_DISABLED};
+}}
+
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     background-color: {BG_PANEL};
     border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 6px 10px;
+    border-radius: {RADIUS_TIGHT};
+    padding: 7px 10px;
     color: {TEXT_PRIMARY};
     selection-background-color: {ACCENT};
+    selection-color: {BG_WINDOW};
 }}
-QLineEdit:disabled, QComboBox:disabled {{
+QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{
+    border-color: #3c5468;
+}}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
     color: {TEXT_DISABLED};
-    background-color: transparent;
+    background: transparent;
     border-color: transparent;
 }}
 QLineEdit:read-only {{
-    background-color: transparent;
+    background: transparent;
     border-color: transparent;
 }}
-QLineEdit:focus, QComboBox:focus {{
-    border-color: {ACCENT};
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+    border: 1.5px solid {ACCENT};
+    padding: 6.5px 9.5px;
 }}
+
 QComboBox::drop-down {{
     border: none;
-    width: 20px;
+    width: 24px;
+}}
+QComboBox::down-arrow {{
+    image: none;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {TEXT_SECONDARY};
+    margin-right: 10px;
+}}
+QComboBox::down-arrow:on {{
+    border-top-color: {ACCENT};
 }}
 QComboBox QAbstractItemView {{
-    background-color: {BG_PANEL};
+    background-color: {BG_PANEL_RAISED};
     border: 1px solid {BORDER};
-    border-radius: 6px;
+    border-radius: {RADIUS_PANEL};
     selection-background-color: {ACCENT};
     selection-color: {BG_WINDOW};
     padding: 4px;
+    outline: none;
+}}
+
+/* Spin buttons: native OS up/down chrome doesn't match a flat dark
+   theme, so these are redrawn as plain triangles that pick up the
+   same hover feedback as everything else instead of standing out as
+   the one un-styled control. */
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    background-color: transparent;
+    border: none;
+    width: 18px;
+    subcontrol-origin: border;
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-position: top right;
+    border-top-right-radius: {RADIUS_TIGHT};
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: {RADIUS_TIGHT};
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background-color: {BG_PANEL_HOVER};
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: none;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid {TEXT_SECONDARY};
+}}
+QSpinBox::up-arrow:hover, QDoubleSpinBox::up-arrow:hover {{
+    border-bottom-color: {ACCENT};
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: none;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {TEXT_SECONDARY};
+}}
+QSpinBox::down-arrow:hover, QDoubleSpinBox::down-arrow:hover {{
+    border-top-color: {ACCENT};
+}}
+
+/* Checkboxes -- e.g. the Export dialog's format list. Flat filled-square
+   checked state (no native checkmark glyph) to match the rest of the
+   flat, borderless-icon language used everywhere else in this theme. */
+QCheckBox {{
+    spacing: 9px;
+    color: {TEXT_PRIMARY};
+}}
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_TIGHT};
+    background-color: {BG_PANEL};
+}}
+QCheckBox::indicator:hover {{
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:disabled {{
+    border-color: {BORDER_SOFT};
+    background-color: transparent;
 }}
 
 /* Inspector fields: right-aligned, bold values, no boxy chrome --
    matches the mockup's plain "label ... value" rows. */
 #inspectorPanel QLineEdit, #inspectorPanel QComboBox {{
-    background-color: transparent;
+    background: transparent;
     border: none;
     padding: 4px 2px;
-    font-weight: 600;
+    font-weight: 500;
     qproperty-alignment: AlignRight;
 }}
 #inspectorPanel QLineEdit:focus, #inspectorPanel QComboBox:focus {{
-    background-color: {BG_PANEL};
-    border: 1px solid {ACCENT};
-    border-radius: 6px;
+    background: {BG_PANEL};
+    border: 1.5px solid {ACCENT};
+    border-radius: {RADIUS_TIGHT};
+    padding: 3.5px 1.5px;
 }}
 #inspectorPanel QFormLayout QLabel {{
     color: {TEXT_SECONDARY};
@@ -192,7 +324,7 @@ QListWidget {{
     outline: none;
 }}
 QListWidget::item {{
-    border-radius: 6px;
+    border-radius: {RADIUS_TIGHT};
     padding: 4px;
     margin: 1px 0;
     color: {TEXT_PRIMARY};
@@ -214,7 +346,7 @@ QScrollBar:vertical {{ width: 10px; }}
 QScrollBar:horizontal {{ height: 10px; }}
 QScrollBar::handle {{
     background: {BG_PANEL};
-    border-radius: 5px;
+    border-radius: {RADIUS_TIGHT};
     min-height: 24px;
     min-width: 24px;
 }}
@@ -236,7 +368,7 @@ QToolTip {{
     background-color: {BG_PANEL};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER};
-    border-radius: 6px;
+    border-radius: {RADIUS_PANEL};
     padding: 5px 8px;
 }}
 
@@ -246,4 +378,5 @@ PlaybackControls, FrameActionBar {{
     border-top: 1px solid {BORDER};
 }}
 """
+
 
