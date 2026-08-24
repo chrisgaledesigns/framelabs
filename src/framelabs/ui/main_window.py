@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -82,6 +83,29 @@ _EXPORT_FORMAT_LABELS = {
     "image_sequence": "Copying image sequence",
     "gif": "Encoding GIF",
 }
+
+
+def _titled_pane(title: str, content: QWidget) -> QWidget:
+    """Wrap `content` in a plain container with a small caption label
+    above it, so each of the main window's panes (Project Browser, Live
+    View, Inspector, Timeline) is visibly labeled.
+
+    A wrapper QWidget rather than editing each pane's own __init__,
+    since LiveViewWidget is a QGraphicsView and TimelineWidget is a
+    QScrollArea -- neither has a layout of its own to drop a label into
+    without restructuring the widget itself. Wrapping at the call site
+    keeps every pane's existing class untouched.
+    """
+    title_label = QLabel(title.upper())
+    title_label.setObjectName("panelTitle")
+
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    layout.addWidget(title_label)
+    layout.addWidget(content, 1)
+    return container
 
 
 class MainWindow(QMainWindow):
@@ -372,9 +396,9 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(13)
-        splitter.addWidget(self.project_browser_widget)
-        splitter.addWidget(self.live_view_widget)
-        splitter.addWidget(self.inspector_panel)
+        splitter.addWidget(_titled_pane("Project Browser", self.project_browser_widget))
+        splitter.addWidget(_titled_pane("Live View", self.live_view_widget))
+        splitter.addWidget(_titled_pane("Inspector", self.inspector_panel))
 
         # Live Camera View gets most of the space; side panes stay narrower.
         # setSizes() controls the *initial* pixel widths -- QSplitter sizes
@@ -401,7 +425,7 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(12, 12, 12, 0)
         central_layout.setSpacing(10)
         central_layout.addWidget(splitter, 1)
-        central_layout.addWidget(self.timeline_widget)
+        central_layout.addWidget(_titled_pane("Timeline", self.timeline_widget))
         central_layout.addWidget(self.frame_action_bar)
         central_layout.addWidget(self.playback_controls)
 

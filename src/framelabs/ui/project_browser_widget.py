@@ -7,17 +7,23 @@ data model or folder for it yet, so it isn't shown here at all (adding a
 placeholder entry with no real behavior behind it was deliberately
 skipped per Chris's explicit choice).
 
-Every section header is a real clickable accordion toggle (_SectionHeader
-below), not just a label -- clicking it expands/collapses that section's
-content, per Chris's explicit feedback that six always-expanded sections
-stacked in the narrow side splitter looked cluttered. Only Frames starts
-expanded when a project opens; every other section starts collapsed,
-also per Chris's explicit choice -- Frames is the one section almost
-always relevant, the rest are opened on demand. Collapse state persists
-across set_project() calls within the same widget instance (switching
-projects doesn't reset a section a user deliberately expanded), and is
-NOT saved anywhere (a fresh ProjectBrowserWidget always starts with only
-Frames expanded).
+Every section header is a real clickable tab button (_SectionHeader
+below), not a plain label -- clicking one switches which section's
+content is shown below the tab row, per Chris's explicit feedback that
+six always-expanded sections stacked in the narrow side splitter looked
+cluttered, and that the original vertical accordion still wasted most
+of the panel's height on collapsed headers instead of giving Frames
+(the section almost always relevant) the full remaining space. The six
+headers sit in one horizontal row instead, each toggling visibility of
+its own content area below; an exclusive QButtonGroup (_section_button_
+group) enforces that exactly one is ever checked, so switching tabs
+always shows exactly one section's content, filling the panel's full
+height, rather than stacking multiple expanded sections. Frames starts
+active when a project opens (_DEFAULT_ACTIVE_SECTION). The active tab
+persists across set_project() calls within the same widget instance
+(switching projects doesn't reset which tab a user was viewing), and is
+NOT saved anywhere (a fresh ProjectBrowserWidget always starts on
+Frames).
 
 Frames renders as a real thumbnail grid (QListWidget in IconMode), not a
 text list, per Chris's explicit choice after seeing the first version --
@@ -86,6 +92,8 @@ from functools import partial
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QButtonGroup,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -123,25 +131,30 @@ FRAME_TILE_SIZE = 72
 # names directly, so getattr(project, kind) always resolves correctly.
 _ASSET_KINDS = ("audio", "references", "overlays")
 
-# Every collapsible section, in display order top to bottom. Matches the
-# keys used in _section_headers/_section_content below.
+# Every section, in tab order left to right. Matches the keys used in
+# _section_headers/_section_content below.
 _SECTION_KEYS = ("frames", "audio", "references", "overlays", "notes", "exports")
 
-# Only Frames starts expanded -- see module docstring for why.
-_INITIALLY_EXPANDED = {"frames"}
+# The section shown by default when a project opens -- see module
+# docstring for why Frames specifically.
+_DEFAULT_ACTIVE_SECTION = "frames"
 
 
 class _SectionHeader(QPushButton):
-    """A clickable, collapsible section header showing an expand/collapse
-    chevron next to its title.
+    """A clickable tab button showing an expand/collapse-style chevron
+    next to its title, matching the active/inactive state.
 
     A real QPushButton (flat, borderless, checkable) rather than a plain
-    QLabel, so clicking anywhere on the header toggles it -- checked
-    state IS the expanded/collapsed state, read via isChecked().
+    QLabel, so clicking anywhere on the tab activates it -- checked
+    state IS "this tab is the active one", read via isChecked(). Callers
+    add every _SectionHeader instance to one exclusive QButtonGroup (see
+    ProjectBrowserWidget.__init__), which is what actually enforces
+    "exactly one active at a time" -- this class itself has no opinion
+    on the other tabs.
     """
 
     def __init__(self, title: str) -> None:
-        """Build the header, initially collapsed. Caller sets the real
+        """Build the tab, initially inactive. Caller sets the real
         initial state via set_expanded() afterward."""
         super().__init__()
         self._title = title
@@ -150,7 +163,7 @@ class _SectionHeader(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(
             "QPushButton { text-align: left; font-weight: 600; "
-            "font-size: 12px; border: none; padding: 10px 4px; }"
+            "font-size: 12px; border: none; padding: 6px 8px; }"
         )
         self.toggled.connect(self._update_text)
         self._update_text()
@@ -167,12 +180,12 @@ class _SectionHeader(QPushButton):
 
 class ProjectBrowserWidget(QWidget):
     """Real per-project navigation panel: Frames grid / Audio / References
-    / Overlays / Notes / Exports, each a collapsible accordion section.
+    / Overlays / Notes / Exports, shown one at a time behind a tab strip.
 
     See module docstring for why Frames alone uses a thumbnail grid rather
     than a text list, why Audio/References/Overlays share one generic
-    implementation instead of three near-copies, and why sections are
-    collapsible with only Frames expanded by default.
+    implementation instead of three near-copies, and why the tabs are
+    mutually exclusive with only Frames active by default.
     """
 
     # Raw index into Project.frames / Timeline.frames, exactly matching
@@ -215,7 +228,8 @@ class ProjectBrowserWidget(QWidget):
     overlays_item_context_menu_requested = Signal(str, QPoint)
 
     def __init__(self) -> None:
-        """Build the panel's sections (initially empty/hidden)."""
+        """Build the panel's tab strip and per-section content (initially
+        empty/hidden)."""
         super().__init__()
         self.setObjectName("projectBrowserWidget")
 
@@ -227,7 +241,6 @@ class ProjectBrowserWidget(QWidget):
         layout.addWidget(self._no_project_label)
 
         self._frames_header = _SectionHeader("Frames")
-        layout.addWidget(self._frames_header)
         self._frames_grid = QListWidget()
         self._frames_grid.setViewMode(QListWidget.ViewMode.IconMode)
         self._frames_grid.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -241,7 +254,6 @@ class ProjectBrowserWidget(QWidget):
         self._frames_grid.customContextMenuRequested.connect(
             self._on_frames_grid_context_menu_requested
         )
-        layout.addWidget(self._frames_grid, 2)
 
         # Audio/References/Overlays: one QListWidget per kind, built
         # generically since all three are structurally identical. Stored
@@ -250,40 +262,33 @@ class ProjectBrowserWidget(QWidget):
         self._asset_headers: dict[str, _SectionHeader] = {}
         self._asset_lists: dict[str, QListWidget] = {}
         for kind in _ASSET_KINDS:
-            header = _SectionHeader(kind.capitalize())
-            layout.addWidget(header)
-            self._asset_headers[kind] = header
+            self._asset_headers[kind] = _SectionHeader(kind.capitalize())
 
             list_widget = QListWidget()
             list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             list_widget.customContextMenuRequested.connect(
                 partial(self._on_asset_list_context_menu_requested, kind)
             )
-            layout.addWidget(list_widget, 1)
             self._asset_lists[kind] = list_widget
 
         self._notes_header = _SectionHeader("Notes")
-        layout.addWidget(self._notes_header)
         self._notes_list = QListWidget()
         self._notes_list.itemDoubleClicked.connect(self._on_indexed_item_double_clicked)
         self._notes_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._notes_list.customContextMenuRequested.connect(
             self._on_notes_list_context_menu_requested
         )
-        layout.addWidget(self._notes_list, 1)
 
         self._exports_header = _SectionHeader("Exports")
-        layout.addWidget(self._exports_header)
         self._exports_list = QListWidget()
         self._exports_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._exports_list.customContextMenuRequested.connect(
             self._on_exports_list_context_menu_requested
         )
-        layout.addWidget(self._exports_list, 1)
 
         # Unified key -> (header, content) mapping, used by the generic
-        # collapse/expand logic and the "no project" show/hide toggle,
-        # rather than repeating six near-identical if/elif blocks.
+        # tab-switch logic and the "no project" show/hide toggle, rather
+        # than repeating six near-identical if/elif blocks.
         self._section_headers: dict[str, _SectionHeader] = {
             "frames": self._frames_header,
             "audio": self._asset_headers["audio"],
@@ -301,9 +306,37 @@ class ProjectBrowserWidget(QWidget):
             "exports": self._exports_list,
         }
 
+        # One horizontal row of tabs, per Chris's explicit choice that
+        # the old vertical accordion wasted height on collapsed headers
+        # -- see module docstring. An exclusive QButtonGroup is what
+        # actually enforces "exactly one active at a time" (verified:
+        # unlike an accordion's independent toggles, an exclusive group
+        # refuses to let its sole checked button be unchecked directly,
+        # so there's no extra guard code needed here for a "collapse the
+        # last open tab" case that the tab strip shouldn't allow anyway).
+        self._section_button_group = QButtonGroup(self)
+        self._section_button_group.setExclusive(True)
+        for key in _SECTION_KEYS:
+            self._section_button_group.addButton(self._section_headers[key])
+
+        tab_row = QHBoxLayout()
+        tab_row.setSpacing(2)
+        for key in _SECTION_KEYS:
+            tab_row.addWidget(self._section_headers[key])
+        tab_row.addStretch(1)
+        layout.addLayout(tab_row)
+
+        # Content widgets all share the same row in the layout below the
+        # tab strip -- only the active tab's content is ever visible, so
+        # whichever one that is expands to fill the panel's full
+        # remaining height (stretch=1 on all of them, since exactly one
+        # is visible at a time regardless of the others' stretch).
+        for key in _SECTION_KEYS:
+            layout.addWidget(self._section_content[key], 1)
+
         for key in _SECTION_KEYS:
             header = self._section_headers[key]
-            header.set_expanded(key in _INITIALLY_EXPANDED)
+            header.set_expanded(key == _DEFAULT_ACTIVE_SECTION)
             header.toggled.connect(partial(self._on_section_toggled, key))
 
         self._show_no_project()
@@ -338,9 +371,9 @@ class ProjectBrowserWidget(QWidget):
         `project=None` (no active project yet), which shows a single
         placeholder row instead of every section.
 
-        Each section's collapsed/expanded state is preserved across this
-        call -- switching projects (or refreshing the current one) doesn't
-        reset a section the user deliberately expanded or collapsed.
+        Each tab's active/inactive state is preserved across this call --
+        switching projects (or refreshing the current one) doesn't reset
+        which tab a user was viewing.
         """
         self._frames_grid.clear()
         for kind in _ASSET_KINDS:
@@ -366,11 +399,11 @@ class ProjectBrowserWidget(QWidget):
         self._build_exports_list(project)
 
     def _on_section_toggled(self, key: str, expanded: bool) -> None:
-        """Show/hide a section's content when its header is clicked.
+        """Show/hide a section's content when its tab is (de)activated.
 
         No-op while no project is open -- all sections are hidden
-        together via _show_no_project() regardless of collapse state, so
-        toggling a header before a project loads shouldn't make content
+        together via _show_no_project() regardless of active-tab state,
+        so switching tabs before a project loads shouldn't make content
         visible against the placeholder state.
         """
         if self._no_project_label.isVisible():
