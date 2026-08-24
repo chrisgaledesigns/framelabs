@@ -70,7 +70,15 @@ def test_set_project_shows_all_headers_and_only_frames_content(qtbot, tmp_path):
     """Session 16: sections are now collapsible accordions, only Frames
     expanded by default -- every header is visible once a project opens,
     but only Frames' content is, since every other section starts
-    collapsed (see module docstring)."""
+    collapsed (see module docstring).
+
+    Session 17 (overflow menu, matching Chris's mockup): References and
+    Overlays no longer get a visible tab header at all -- they're reached
+    through the overflow button instead -- so only the four tab-row
+    sections' headers are checked here; References/Overlays' headers
+    stay permanently hidden regardless of project state (see
+    test_references_and_overlays_headers_never_become_visible).
+    """
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(tmp_path, [Frame(number=1, file="images/000001.png")])
@@ -78,11 +86,45 @@ def test_set_project_shows_all_headers_and_only_frames_content(qtbot, tmp_path):
     widget.set_project(project)
 
     assert widget._no_project_label.isHidden()
-    for header in widget._section_headers.values():
-        assert not header.isHidden()
+    for key in ("frames", "audio", "notes", "exports"):
+        assert not widget._section_headers[key].isHidden()
     assert not widget._frames_grid.isHidden()
     for key in ("audio", "references", "overlays", "notes", "exports"):
         assert widget._section_content[key].isHidden()
+
+
+def test_references_and_overlays_headers_never_become_visible(qtbot, tmp_path):
+    """References/Overlays are reached via the overflow menu (see module
+    docstring) -- their _SectionHeader still exists (so it can join the
+    exclusive button group) but must never actually be shown, unlike
+    Frames/Audio/Notes/Exports's headers."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+
+    widget.set_project(project)
+
+    assert widget._section_headers["references"].isHidden()
+    assert widget._section_headers["overlays"].isHidden()
+
+
+def test_overflow_menu_action_activates_references_section(qtbot, tmp_path):
+    """Picking "References" from the overflow button's menu must behave
+    exactly like clicking a real tab: References' content shows, every
+    other section (including the previously-active Frames) hides, and
+    the overflow button itself picks up the checked/active look."""
+    widget = ProjectBrowserWidget()
+    qtbot.addWidget(widget)
+    project = _make_project(tmp_path, [])
+    widget.set_project(project)
+
+    widget._on_overflow_action_triggered("references")
+
+    assert widget._section_headers["references"].isChecked() is True
+    assert not widget._section_content["references"].isHidden()
+    assert widget._frames_grid.isHidden()
+    assert widget._frames_header.isChecked() is False
+    assert widget._overflow_button.isChecked() is True
 
 
 def test_frames_grid_has_one_tile_per_frame_in_order(qtbot, tmp_path):

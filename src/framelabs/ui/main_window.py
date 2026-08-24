@@ -63,6 +63,7 @@ from framelabs.ui.project_browser_widget import ProjectBrowserWidget
 from framelabs.ui.project_controller import ProjectController
 from framelabs.ui.project_settings_dialog import ProjectSettingsDialog
 from framelabs.ui.theater_view_dialog import TheaterViewDialog
+from framelabs.ui.timecode_widget import TimecodeWidget
 from framelabs.ui.timeline_widget import (
     FrameActionBar,
     PlaybackControls,
@@ -404,7 +405,10 @@ class MainWindow(QMainWindow):
         # setSizes() controls the *initial* pixel widths -- QSplitter sizes
         # panes by each widget's size hint otherwise, which is wrong here
         # since "Inspector" and "Project Browser" are different text lengths.
-        splitter.setSizes([250, 780, 250])
+        # Project Browser gets slightly more than Inspector so the Frames
+        # grid's three-column thumbnail layout (per Chris's mockup) fits
+        # without immediately wrapping down to two columns.
+        splitter.setSizes([300, 730, 250])
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 1)
@@ -419,12 +423,19 @@ class MainWindow(QMainWindow):
         # size.
         self.frame_action_bar.set_bar_visible(False)
         self.playback_controls = PlaybackControls()
+        self.timecode_widget = TimecodeWidget()
 
         central_widget = QWidget()
         central_layout = QVBoxLayout(central_widget)
         central_layout.setContentsMargins(12, 12, 12, 0)
         central_layout.setSpacing(10)
         central_layout.addWidget(splitter, 1)
+        # Centered as one unit (not stretched full-width) directly below
+        # Live View and above the Timeline strip, per Chris's explicit
+        # placement -- AlignHCenter here is what actually centers it;
+        # the widget itself just sizes to its own content (see
+        # TimecodeWidget's docstring).
+        central_layout.addWidget(self.timecode_widget, 0, Qt.AlignmentFlag.AlignHCenter)
         central_layout.addWidget(_titled_pane("Timeline", self.timeline_widget))
         central_layout.addWidget(self.frame_action_bar)
         central_layout.addWidget(self.playback_controls)
@@ -1536,14 +1547,22 @@ class MainWindow(QMainWindow):
         open" placeholder row) -- unlike the Timeline strip, the browser
         has a real, correct empty state to fall back to rather than
         nothing to do.
+
+        Also refreshes the Timecode readout via _update_timecode_widget()
+        -- a frame-list change (capture, delete, undo/redo, ...) can move
+        the playhead just as much as an explicit navigation action can,
+        so the timecode needs to stay in sync here too, not just from
+        _move_timeline_playhead().
         """
         self.project_browser_widget.set_project(self.project)
         if self.project is None or self.timeline is None:
+            self.timecode_widget.clear()
             return
         thumbnails_dir = self.project.project_path / "thumbnails"
         self.timeline_widget.refresh(
             self.timeline.frames, thumbnails_dir, self.timeline.current_index
         )
+        self._update_timecode_widget()
 
     def _move_timeline_playhead(self) -> None:
         """Move the Timeline strip's selection border to match the current
@@ -1561,6 +1580,25 @@ class MainWindow(QMainWindow):
         if self.project is None or self.timeline is None:
             return
         self.timeline_widget.set_current_index(self.timeline.current_index)
+        self._update_timecode_widget()
+
+    def _update_timecode_widget(self) -> None:
+        """Keep the Timecode readout in sync with the current playhead.
+
+        Called from both _refresh_timeline_widget() (frame list changed)
+        and _move_timeline_playhead() (playhead-only move) -- the same
+        two call sites that already keep the Timeline strip's own
+        selection border in sync, since the timecode needs updating on
+        exactly the same events. No-op guard mirrors every other
+        Timeline-dependent refresh method here (falls back to
+        TimecodeWidget's own empty-state placeholder via clear()).
+        """
+        if self.project is None or self.timeline is None:
+            self.timecode_widget.clear()
+            return
+        self.timecode_widget.set_state(
+            self.timeline.current_index, len(self.timeline), self.project.fps
+        )
 
     def _refresh_frame_action_bar(self) -> None:
         """Sync FrameActionBar's controls to whichever frame is now current,

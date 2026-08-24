@@ -162,6 +162,18 @@ QPushButton:flat:hover {{
     color: {TEXT_PRIMARY};
 }}
 
+/* Project Browser's overflow ("burger") button -- References/Overlays'
+   tab stand-in. An #objectName selector so it wins over the generic
+   QPushButton:flat rule above regardless of stylesheet order, since a
+   checked overflow button needs to read as "active" the same way a
+   real tab does. */
+#projectBrowserOverflowButton {{
+    padding: 7px 10px;
+}}
+#projectBrowserOverflowButton:checked {{
+    color: {ACCENT};
+}}
+
 /* Primary/default action -- the button a dialog's Enter key triggers
    (Create, Save, Ok, ...). Solid accent fill so the one action most
    people want stands out from every neutral button around it, instead
@@ -393,6 +405,28 @@ QToolTip {{
 PlaybackControls, FrameActionBar {{
     background-color: {BG_PANEL_RAISED};
     border-top: 1px solid {BORDER};
+}}
+
+/* Timecode readout -- centered between Live View and the Timeline
+   strip. A small pill so it reads as its own control, not just loose
+   text floating in the gap between panes. */
+#timecodeWidget {{
+    background-color: {BG_PANEL_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_PANEL};
+}}
+#timecodeReadout {{
+    color: {TEXT_PRIMARY};
+    font-family: "SF Mono", "Consolas", "DejaVu Sans Mono", monospace;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}}
+#timecodeFrameCount {{
+    color: {TEXT_SECONDARY};
+    font-size: 11px;
+    border-left: 1px solid {BORDER};
+    padding-left: 10px;
 }}
 """
 
