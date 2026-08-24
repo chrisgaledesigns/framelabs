@@ -480,7 +480,11 @@ def test_frames_header_starts_expanded_others_start_collapsed(qtbot, tmp_path):
         assert widget._section_headers[key].isChecked() is False
 
 
-def test_clicking_header_expands_its_own_section_only(qtbot, tmp_path):
+def test_clicking_tab_activates_its_own_section_and_deactivates_others(qtbot, tmp_path):
+    """The tab strip is mutually exclusive (an exclusive QButtonGroup) --
+    activating one tab always deactivates whichever was previously
+    active, unlike the old accordion where multiple sections could stay
+    expanded at once."""
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(tmp_path, [])
@@ -491,11 +495,15 @@ def test_clicking_header_expands_its_own_section_only(qtbot, tmp_path):
     assert not widget._notes_list.isHidden()
     for key in ("audio", "references", "overlays", "exports"):
         assert widget._section_content[key].isHidden()
-    # Frames was already expanded and stays that way, unaffected.
-    assert not widget._frames_grid.isHidden()
+    # Frames was active before Notes was clicked -- the exclusive group
+    # deactivates it the moment another tab activates.
+    assert widget._frames_header.isChecked() is False
+    assert widget._frames_grid.isHidden()
 
 
-def test_clicking_expanded_header_collapses_its_section(qtbot, tmp_path):
+def test_clicking_the_already_active_tab_keeps_it_active(qtbot, tmp_path):
+    """A tab strip always shows exactly one section -- unlike the old
+    accordion, there's no way to collapse the active tab down to none."""
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(tmp_path, [])
@@ -503,12 +511,13 @@ def test_clicking_expanded_header_collapses_its_section(qtbot, tmp_path):
 
     widget._frames_header.setChecked(False)
 
-    assert widget._frames_grid.isHidden()
+    assert widget._frames_header.isChecked() is True
+    assert not widget._frames_grid.isHidden()
 
 
-def test_collapse_state_persists_across_set_project_calls(qtbot, tmp_path):
-    """Expanding a section, then reloading/switching projects, must not
-    silently re-collapse it back to the default state."""
+def test_active_tab_persists_across_set_project_calls(qtbot, tmp_path):
+    """Activating a different tab, then reloading/switching projects, must
+    not silently reset back to the default Frames tab."""
     widget = ProjectBrowserWidget()
     qtbot.addWidget(widget)
     project = _make_project(tmp_path, [])
@@ -522,3 +531,5 @@ def test_collapse_state_persists_across_set_project_calls(qtbot, tmp_path):
 
     assert widget._notes_header.isChecked() is True
     assert not widget._notes_list.isHidden()
+    assert widget._frames_header.isChecked() is False
+    assert widget._frames_grid.isHidden()

@@ -108,6 +108,20 @@ QGraphicsView#liveViewWidget {{
     border: none;
 }}
 
+/* Panel title labels ("Project Browser", "Live View", "Inspector",
+   "Timeline") sitting above each main-window pane -- one step quieter
+   than a section header, just enough to label which pane is which. */
+/* Qt's QSS subset has neither text-transform nor letter-spacing, so the
+   widget code uppercases the label text itself before setting it. */
+QLabel#panelTitle {{
+    color: {TEXT_SECONDARY};
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 2px 6px 2px;
+    border-bottom: 1px solid {BORDER_SOFT};
+    margin-bottom: 6px;
+}}
+
 QPushButton {{
     background-color: {BG_PANEL_RAISED};
     border: 1px solid {BORDER};
