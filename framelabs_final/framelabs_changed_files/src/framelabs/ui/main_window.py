@@ -6,16 +6,14 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
-from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
-    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QProgressDialog,
     QSplitter,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -31,7 +29,7 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
-from framelabs.export.export_service import ExportProgress, ExportRequest, ExportResult
+from framelabs.export.export_service import ExportProgress, ExportResult
 from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
 from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
@@ -41,19 +39,10 @@ from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
 from framelabs.ui.autosave_controller import AutosaveController
 from framelabs.ui.blender_controller import BlenderBridgeController
-from framelabs.ui.blender_sync_controller import BlenderSyncController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
-from framelabs.ui.composition_guides import (
-    ASPECT_RATIO_GUIDE_TYPES,
-    ASPECT_RATIO_LABELS,
-    ASPECT_RATIO_NONE,
-    COMPOSITION_GUIDE_LABELS,
-    COMPOSITION_GUIDE_TYPES,
-    GUIDE_NONE,
-)
 from framelabs.ui.export_controller import ExportController
-from framelabs.ui.export_page import ExportPage
+from framelabs.ui.export_dialog import ExportDialog
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
@@ -62,9 +51,7 @@ from framelabs.ui.onion_skin_controller import OnionSkinController
 from framelabs.ui.playback_controller import PlaybackController
 from framelabs.ui.project_browser_widget import ProjectBrowserWidget
 from framelabs.ui.project_controller import ProjectController
-from framelabs.ui.project_settings_dialog import ProjectSettingsDialog
 from framelabs.ui.theater_view_dialog import TheaterViewDialog
-from framelabs.ui.timecode_widget import TimecodeWidget
 from framelabs.ui.timeline_widget import (
     FrameActionBar,
     PlaybackControls,
@@ -85,29 +72,6 @@ _EXPORT_FORMAT_LABELS = {
     "image_sequence": "Copying image sequence",
     "gif": "Encoding GIF",
 }
-
-
-def _titled_pane(title: str, content: QWidget) -> QWidget:
-    """Wrap `content` in a plain container with a small caption label
-    above it, so each of the main window's panes (Project Browser, Live
-    View, Inspector, Timeline) is visibly labeled.
-
-    A wrapper QWidget rather than editing each pane's own __init__,
-    since LiveViewWidget is a QGraphicsView and TimelineWidget is a
-    QScrollArea -- neither has a layout of its own to drop a label into
-    without restructuring the widget itself. Wrapping at the call site
-    keeps every pane's existing class untouched.
-    """
-    title_label = QLabel(title.upper())
-    title_label.setObjectName("panelTitle")
-
-    container = QWidget()
-    layout = QVBoxLayout(container)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(0)
-    layout.addWidget(title_label)
-    layout.addWidget(content, 1)
-    return container
 
 
 class MainWindow(QMainWindow):
@@ -165,7 +129,6 @@ class MainWindow(QMainWindow):
         self._start_autosave_controller()
         self._start_export_controller()
         self._start_blender_controller()
-        self._start_blender_sync_controller()
         self._wire_playback_controls()
         self._wire_timeline_widget()
         self._wire_frame_action_bar()
@@ -218,27 +181,9 @@ class MainWindow(QMainWindow):
         self.delete_frame_action.setShortcuts(self._shortcuts("delete_frame"))
         self.delete_frame_action.triggered.connect(self._on_delete_frame)
 
-        # Edit menu: name/FPS/resolution/camera info for the active
-        # project. Guarded (no-op with a log line) rather than
-        # proactively disabled when there's no active project yet --
-        # same pattern as save_action/duplicate_frame_action above,
-        # not a special case.
-        self.project_settings_action = QAction("Project Settings...", self)
-        self.project_settings_action.triggered.connect(self._on_project_settings)
-
         self.play_action = QAction("Play", self)
         self.play_action.setShortcuts(self._shortcuts("play_pause"))
         self.play_action.triggered.connect(self._on_toggle_play)
-
-        # Feature 7 follow-up: a menu-driven way into Theater View that
-        # doesn't require double-clicking a specific tile in the Project
-        # Browser's Frames grid first. Opens on the Timeline's current
-        # playhead frame -- see _on_open_theater_view()'s docstring for why
-        # that's still safe under Chris's "must not move the playhead"
-        # rule for this dialog.
-        self.theater_view_action = QAction("Theater View...", self)
-        self.theater_view_action.setShortcuts(self._shortcuts("theater_view"))
-        self.theater_view_action.triggered.connect(self._on_open_theater_view)
 
         self.onion_action = QAction("Onion", self)
         self.onion_action.setCheckable(True)
@@ -248,42 +193,6 @@ class MainWindow(QMainWindow):
         self.safe_areas_action = QAction("Safe Areas", self)
         self.safe_areas_action.setCheckable(True)
         self.safe_areas_action.triggered.connect(self._on_toggle_safe_areas)
-
-        # Composition guide overlays (Center Grid, Thirds, Golden Ratio,
-        # etc.) -- mutually exclusive via QActionGroup, since
-        # LiveViewWidget only ever shows one at a time. "None" is a real
-        # entry in the group (not a separate toggle) so the group always
-        # has exactly one checked action, matching
-        # composition_guides.COMPOSITION_GUIDE_TYPES exactly.
-        self.composition_guide_actions: dict[str, QAction] = {}
-        self.composition_guide_group = QActionGroup(self)
-        self.composition_guide_group.setExclusive(True)
-        for guide_type in COMPOSITION_GUIDE_TYPES:
-            action = QAction(COMPOSITION_GUIDE_LABELS[guide_type], self)
-            action.setCheckable(True)
-            action.setChecked(guide_type == GUIDE_NONE)
-            action.triggered.connect(
-                partial(self._on_composition_guide_selected, guide_type)
-            )
-            self.composition_guide_group.addAction(action)
-            self.composition_guide_actions[guide_type] = action
-
-        # Aspect ratio crop guides (1:1, 4:3, 16:9, etc.) -- same
-        # mutually-exclusive-group-with-a-real-"None"-entry pattern as
-        # composition guides above, and fully independent of it: both
-        # groups can have a real selection active at once.
-        self.aspect_ratio_guide_actions: dict[str, QAction] = {}
-        self.aspect_ratio_guide_group = QActionGroup(self)
-        self.aspect_ratio_guide_group.setExclusive(True)
-        for ratio_type in ASPECT_RATIO_GUIDE_TYPES:
-            action = QAction(ASPECT_RATIO_LABELS[ratio_type], self)
-            action.setCheckable(True)
-            action.setChecked(ratio_type == ASPECT_RATIO_NONE)
-            action.triggered.connect(
-                partial(self._on_aspect_ratio_guide_selected, ratio_type)
-            )
-            self.aspect_ratio_guide_group.addAction(action)
-            self.aspect_ratio_guide_actions[ratio_type] = action
 
         self.camera_action = QAction("Rescan", self)
         self.camera_action.triggered.connect(self._on_rescan_camera)
@@ -299,20 +208,11 @@ class MainWindow(QMainWindow):
 
         self.export_render_action = QAction("Export...", self)
         self.export_render_action.setShortcuts(self._shortcuts("export"))
-        self.export_render_action.triggered.connect(self._on_show_export_page)
+        self.export_render_action.triggered.connect(self._on_export_render)
 
         self.blender_action = QAction("Open in Blender", self)
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
         self.blender_action.triggered.connect(self._on_open_in_blender)
-
-        # Feature 11: only meaningful once "Open in Blender" has been
-        # run this session -- see _on_toggle_live_blender_sync(). Starts
-        # unchecked and disabled; re-enabled the moment a Blender bridge
-        # launch succeeds (_on_blender_bridge_succeeded()).
-        self.live_sync_action = QAction("Live Blender Sync", self)
-        self.live_sync_action.setCheckable(True)
-        self.live_sync_action.setEnabled(False)
-        self.live_sync_action.triggered.connect(self._on_toggle_live_blender_sync)
 
         self.previous_frame_action = QAction("Previous Frame", self)
         self.previous_frame_action.setShortcuts(self._shortcuts("previous_frame"))
@@ -363,50 +263,29 @@ class MainWindow(QMainWindow):
         # Temporary home for Duplicate Frame -- see _create_actions().
         edit_menu.addAction(self.duplicate_frame_action)
         edit_menu.addAction(self.delete_frame_action)
-        edit_menu.addSeparator()
-        edit_menu.addAction(self.project_settings_action)
 
         capture_menu = menu_bar.addMenu("&Capture")
         capture_menu.addAction(self.capture_action)
         capture_menu.addAction(self.onion_action)
-
-        guides_menu = menu_bar.addMenu("&Guides")
-        guides_menu.addAction(self.safe_areas_action)
-        guides_menu.addSeparator()
-        composition_menu = guides_menu.addMenu("Composition Guide")
-        for guide_type in COMPOSITION_GUIDE_TYPES:
-            composition_menu.addAction(self.composition_guide_actions[guide_type])
-            if guide_type == GUIDE_NONE:
-                composition_menu.addSeparator()
-        aspect_ratio_menu = guides_menu.addMenu("Aspect Ratio Guide")
-        for ratio_type in ASPECT_RATIO_GUIDE_TYPES:
-            aspect_ratio_menu.addAction(self.aspect_ratio_guide_actions[ratio_type])
-            if ratio_type == ASPECT_RATIO_NONE:
-                aspect_ratio_menu.addSeparator()
+        capture_menu.addAction(self.safe_areas_action)
 
         playback_menu = menu_bar.addMenu("&Playback")
         playback_menu.addAction(self.play_action)
-        playback_menu.addSeparator()
-        playback_menu.addAction(self.theater_view_action)
 
         camera_menu = menu_bar.addMenu("&Camera")
         camera_menu.addAction(self.camera_action)
 
         export_menu = menu_bar.addMenu("&Export")
         export_menu.addAction(self.export_render_action)
-        export_menu.addSeparator()
-        export_menu.addAction(self.blender_action)
-        export_menu.addAction(self.export_action)
-        export_menu.addAction(self.live_sync_action)
+
+        blender_menu = menu_bar.addMenu("&Blender")
+        blender_menu.addAction(self.blender_action)
+        blender_menu.addAction(self.export_action)
 
     def _build_central_panes(self) -> None:
         """Construct the full central area: the three-pane splitter on top,
         with the Timeline strip, the per-frame action bar, and Playback
-        controls stacked below it -- all as one page of a QStackedWidget,
-        with the Export page (reached via the Export button in Playback
-        Controls' bottom-right corner, or the Export menu action) as the
-        other. A real page switch rather than a dialog popup, per Chris's
-        explicit choice -- see export_page.py's module docstring.
+        controls stacked below it.
         """
         self.project_browser_widget = ProjectBrowserWidget()
         self.live_view_widget = LiveViewWidget()
@@ -414,17 +293,15 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(13)
-        splitter.addWidget(_titled_pane("Project Browser", self.project_browser_widget))
-        splitter.addWidget(_titled_pane("Live View", self.live_view_widget))
-        splitter.addWidget(_titled_pane("Inspector", self.inspector_panel))
+        splitter.addWidget(self.project_browser_widget)
+        splitter.addWidget(self.live_view_widget)
+        splitter.addWidget(self.inspector_panel)
 
-        # Live Camera View gets most of the space and stays centered; the
-        # two side panes are kept equal in width so Live View isn't pushed
-        # off-center. setSizes() controls the *initial* pixel widths --
-        # QSplitter sizes panes by each widget's size hint otherwise, which
-        # is wrong here since "Inspector" and "Project Browser" are
-        # different text lengths.
-        splitter.setSizes([275, 730, 275])
+        # Live Camera View gets most of the space; side panes stay narrower.
+        # setSizes() controls the *initial* pixel widths -- QSplitter sizes
+        # panes by each widget's size hint otherwise, which is wrong here
+        # since "Inspector" and "Project Browser" are different text lengths.
+        splitter.setSizes([250, 780, 250])
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 1)
@@ -439,33 +316,17 @@ class MainWindow(QMainWindow):
         # size.
         self.frame_action_bar.set_bar_visible(False)
         self.playback_controls = PlaybackControls()
-        self.timecode_widget = TimecodeWidget()
 
         central_widget = QWidget()
         central_layout = QVBoxLayout(central_widget)
         central_layout.setContentsMargins(12, 12, 12, 0)
         central_layout.setSpacing(10)
         central_layout.addWidget(splitter, 1)
-        # Centered as one unit (not stretched full-width) directly below
-        # Live View and above the Timeline strip, per Chris's explicit
-        # placement -- AlignHCenter here is what actually centers it;
-        # the widget itself just sizes to its own content (see
-        # TimecodeWidget's docstring).
-        central_layout.addWidget(self.timecode_widget, 0, Qt.AlignmentFlag.AlignHCenter)
-        central_layout.addWidget(_titled_pane("Timeline", self.timeline_widget))
+        central_layout.addWidget(self.timeline_widget)
         central_layout.addWidget(self.frame_action_bar)
         central_layout.addWidget(self.playback_controls)
 
-        self.export_page = ExportPage()
-        self.export_page.back_requested.connect(self._on_export_page_back)
-        self.export_page.export_requested.connect(self._on_export_page_export_requested)
-        self.export_page.open_in_blender_requested.connect(self._on_open_in_blender)
-
-        self._editor_page = central_widget
-        self._central_stack = QStackedWidget()
-        self._central_stack.addWidget(self._editor_page)
-        self._central_stack.addWidget(self.export_page)
-        self.setCentralWidget(self._central_stack)
+        self.setCentralWidget(central_widget)
 
     def _start_camera_controller(self) -> None:
         """Create the camera worker thread and wire its signals to the UI.
@@ -655,9 +516,7 @@ class MainWindow(QMainWindow):
         A NINTH separate thread -- building the manifest/scene script and
         launching a real Blender process shouldn't contend with any of
         the other eight, same "UI Never Blocks" reasoning as every other
-        _start_x_controller() method above. (Feature 11's Live Blender
-        Sync is a further, TENTH thread of its own -- see
-        _start_blender_sync_controller().)
+        _start_x_controller() method above.
         """
         self._blender_thread = QThread(self)
         self.blender_controller = BlenderBridgeController(self.config)
@@ -684,32 +543,6 @@ class MainWindow(QMainWindow):
         )
 
         self._blender_thread.start()
-
-    def _start_blender_sync_controller(self) -> None:
-        """Create Feature 11's Live Blender Sync worker thread and wire
-        its signals.
-
-        A TENTH separate thread, deliberately distinct from
-        BlenderBridgeController's own -- see
-        blender_sync_controller.py's module docstring for why a slow
-        per-frame sync send must never contend with (or be contended by)
-        an "Open in Blender"/"Export .blend" launch.
-        """
-        self._blender_sync_thread = QThread(self)
-        self.blender_sync_controller = BlenderSyncController()
-        self.blender_sync_controller.moveToThread(self._blender_sync_thread)
-
-        self.blender_sync_controller.sync_connected.connect(
-            self._on_live_sync_connected
-        )
-        self.blender_sync_controller.sync_disconnected.connect(
-            self._on_live_sync_disconnected
-        )
-        self.blender_sync_controller.sync_connect_failed.connect(
-            self._on_live_sync_connect_failed
-        )
-
-        self._blender_sync_thread.start()
 
     def _on_autosave_timer_tick(self) -> None:
         """Fire one periodic autosave, per Feature 8's "every 30 seconds".
@@ -756,7 +589,6 @@ class MainWindow(QMainWindow):
         self.playback_controls.speed_combo.currentIndexChanged.connect(
             self._on_speed_changed
         )
-        self.playback_controls.export_button.clicked.connect(self._on_show_export_page)
 
     def _wire_timeline_widget(self) -> None:
         """Connect the TimelineWidget to real timeline state.
@@ -942,40 +774,7 @@ class MainWindow(QMainWindow):
         if self.project is None or self.timeline is None:
             return
         dialog = TheaterViewDialog(
-            self.project.project_path,
-            self.timeline.frames,
-            index,
-            fps=self.project.fps,
-            parent=self,
-        )
-        dialog.exec()
-
-    def _on_open_theater_view(self) -> None:
-        """React to Playback menu > Theater View... -- open the same
-        TheaterViewDialog the Project Browser's frame-tile double-click
-        uses, starting on whatever frame the Timeline's playhead is
-        currently sitting on.
-
-        No-op with a log line if there's no active project yet -- same
-        guard pattern as _on_toggle_play(). Reading
-        self.timeline.current_index here only picks the dialog's
-        *starting* frame; exactly like _on_frame_preview_requested(), the
-        dialog then owns its own local browsing position from that point
-        on and never writes back to Timeline.current_index, so this menu
-        entry is just a second door into the identical read-only preview
-        -- it doesn't relax Chris's "must not move the playhead" rule for
-        this dialog, it just picks a different starting frame than a
-        Frames-grid double-click would.
-        """
-        if self.project is None or self.timeline is None:
-            logger.warning("Theater View requested with no active project; ignoring")
-            return
-        dialog = TheaterViewDialog(
-            self.project.project_path,
-            self.timeline.frames,
-            self.timeline.current_index,
-            fps=self.project.fps,
-            parent=self,
+            self.project.project_path, self.timeline.frames, index, parent=self
         )
         dialog.exec()
 
@@ -1184,38 +983,28 @@ class MainWindow(QMainWindow):
         logger.info("Export deleted: %s", file_path)
         self.project_browser_widget.set_project(self.project)
 
-    def _on_show_export_page(self) -> None:
-        """Show the Export page, refreshed against whichever project is
-        currently open. Reached from the Export button in the
-        bottom-right corner of Playback Controls, or the "Export..."
-        menu action -- both funnel through here so the page is never
-        shown stale.
-        """
-        self.export_page.set_project(self.project)
-        self._central_stack.setCurrentWidget(self.export_page)
+    def _on_export_render(self) -> None:
+        """Open the Export dialog, then fire only the formats the user
+        checked, on ExportController's worker thread -- see that
+        module's docstring for why exports run off the main thread.
 
-    def _on_export_page_back(self) -> None:
-        """Return to the editor from the Export page's Back button."""
-        self._central_stack.setCurrentWidget(self._editor_page)
-
-    def _on_export_page_export_requested(self, request: ExportRequest) -> None:
-        """Fire only the formats checked on the Export page, on
-        ExportController's worker thread -- see that module's
-        docstring for why exports run off the main thread.
-
-        The page itself keeps its own Export button disabled until at
-        least one format is checked, so this is only ever reached with
-        something real to run. Disables that same button for the
-        export's duration so a second click can't overlap one already
-        in progress; re-enabled in both _on_export_succeeded() and
-        _on_export_failed(). Also shows a real progress dialog, updated
-        by _on_export_progress() as ExportController re-emits
+        The dialog itself keeps its Export button disabled until at
+        least one format is checked, so a Cancel/close is the only way
+        to get here with nothing to run. Disables the menu action for
+        the export's duration so a second click can't overlap one
+        already in progress; re-enabled in both _on_export_succeeded()
+        and _on_export_failed(). Also shows a real progress dialog,
+        updated by _on_export_progress() as ExportController re-emits
         export_all()'s per-frame progress -- no Cancel button, since
         export_service has no mid-export cancellation to hook it up to.
         """
         if self.project is None or self.project.project_path is None:
             return
-        self.export_page.set_export_in_progress(True)
+        dialog = ExportDialog(self.project, self)
+        if not dialog.exec():
+            return
+        request = dialog.export_request()
+        self.export_render_action.setEnabled(False)
 
         self._export_progress_dialog = QProgressDialog(
             "Starting export...", "", 0, 100, self
@@ -1255,7 +1044,7 @@ class MainWindow(QMainWindow):
         """Report the finished export, refreshing the Exports list either
         way -- a partial success (see export_all()'s docstring) still
         writes real files that belong there."""
-        self.export_page.set_export_in_progress(False)
+        self.export_render_action.setEnabled(True)
         self._close_export_progress()
         if self.project is not None:
             self.project_browser_widget.set_project(self.project)
@@ -1280,7 +1069,7 @@ class MainWindow(QMainWindow):
 
     def _on_export_failed(self, message: str) -> None:
         """Report a total export failure (e.g. no frames to export)."""
-        self.export_page.set_export_in_progress(False)
+        self.export_render_action.setEnabled(True)
         self._close_export_progress()
         QMessageBox.warning(self, "Export Failed", message)
 
@@ -1288,16 +1077,14 @@ class MainWindow(QMainWindow):
         """Feature 10: kick off the full manifest -> script -> launch
         pipeline on BlenderBridgeController's worker thread.
 
-        Disables the menu action -- and, since "Open in Blender" now
-        also lives as a button on the Export page (see that module's
-        docstring), that button too -- for the duration, re-enabled in
-        every one of the controller's four possible outcomes
-        (succeeded/failed/executable-not-found/already-running).
+        Disables the menu action for the duration, same pattern as
+        _on_export_render() -- re-enabled in every one of the
+        controller's four possible outcomes (succeeded/failed/
+        executable-not-found/already-running).
         """
         if self.project is None or self.project.project_path is None:
             return
         self.blender_action.setEnabled(False)
-        self.export_page.set_blender_action_in_progress(True)
         self.blender_controller.bridge_requested.emit(self.project)
 
     def _on_blender_bridge_succeeded(self, blend_output_path: str) -> None:
@@ -1307,28 +1094,15 @@ class MainWindow(QMainWindow):
         so this is log-only plus re-enabling the action, deliberately no
         dialog (would just be an extra click in front of the Blender
         window that's already opening).
-
-        Also the point Feature 11's Live Blender Sync becomes available:
-        live_sync_action is enabled here (having started disabled, per
-        its own comment in _create_actions()), and if it was already
-        checked from an earlier launch -- e.g. the user picked "Open
-        New Instance" after already_running -- reconnects to the fresh
-        listener automatically, since the old connection (if any) now
-        points at a Blender window that's no longer the current one.
         """
         self.blender_action.setEnabled(True)
-        self.export_page.set_blender_action_in_progress(False)
         logger.info("Blender launched, scene will be saved to %s", blend_output_path)
-        self.live_sync_action.setEnabled(True)
-        if self.live_sync_action.isChecked() and self.project is not None:
-            self.blender_sync_controller.connect_requested.emit(self.project)
 
     def _on_blender_bridge_failed(self, message: str) -> None:
         """Report a Blender bridge failure that isn't the specific
         "no executable found" case (see _on_blender_executable_not_found
         for that one)."""
         self.blender_action.setEnabled(True)
-        self.export_page.set_blender_action_in_progress(False)
         QMessageBox.warning(self, "Open in Blender Failed", message)
 
     def _on_blender_executable_not_found(self) -> None:
@@ -1343,7 +1117,6 @@ class MainWindow(QMainWindow):
         remembered.
         """
         self.blender_action.setEnabled(True)
-        self.export_page.set_blender_action_in_progress(False)
         file_path, _ = QFileDialog.getOpenFileName(self, "Locate Blender Executable")
         if not file_path:
             return
@@ -1368,7 +1141,6 @@ class MainWindow(QMainWindow):
         check entirely.
         """
         self.blender_action.setEnabled(True)
-        self.export_page.set_blender_action_in_progress(False)
         box = QMessageBox(self)
         box.setWindowTitle("Blender Already Running")
         box.setText(
@@ -1390,7 +1162,6 @@ class MainWindow(QMainWindow):
 
         if box.clickedButton() is new_instance_button:
             self.blender_action.setEnabled(False)
-            self.export_page.set_blender_action_in_progress(True)
             self.blender_controller.force_new_instance_requested.emit(self.project)
         # Reuse or Cancel: leave the existing Blender window alone, no
         # further action needed.
@@ -1450,56 +1221,6 @@ class MainWindow(QMainWindow):
             "Blender Executable Remembered",
             'Click "Export .blend..." again to continue.',
         )
-
-    def _on_toggle_live_blender_sync(self, checked: bool) -> None:
-        """Feature 11: turn per-capture forwarding to Blender on or off.
-
-        Only ever reachable once live_sync_action has been enabled by
-        _on_blender_bridge_succeeded() -- "Open in Blender" must have
-        launched successfully at least once this session, since there
-        is otherwise no listener anywhere to connect to. Checking the
-        box asks BlenderSyncController to connect (or reconnect, if a
-        previous connection had since dropped); unchecking it
-        disconnects outright rather than merely gating future sends, so
-        no connection is left open in the background for no reason.
-        """
-        if checked:
-            if self.project is None or self.project.project_path is None:
-                self.live_sync_action.setChecked(False)
-                return
-            self.blender_sync_controller.connect_requested.emit(self.project)
-        else:
-            self.blender_sync_controller.disconnect_requested.emit()
-
-    def _on_live_sync_connected(self) -> None:
-        """Live Blender Sync is now connected to the launched Blender's
-        listener. Log-only plus reflecting the real state in the
-        checkbox -- no dialog, matching _on_blender_bridge_succeeded()'s
-        own "don't interrupt with a popup" reasoning.
-        """
-        logger.info("Live Blender Sync connected")
-        self.live_sync_action.setChecked(True)
-
-    def _on_live_sync_disconnected(self) -> None:
-        """The live-sync connection ended, whether by explicit user
-        request (unchecking the box) or because a send failed (e.g. the
-        user closed the Blender window mid-session) -- either way,
-        reflect "not connected" in the checkbox so it never shows
-        checked while nothing is actually listening.
-        """
-        logger.info("Live Blender Sync disconnected")
-        self.live_sync_action.setChecked(False)
-
-    def _on_live_sync_connect_failed(self, message: str) -> None:
-        """Connecting to Blender's live-sync listener failed outright
-        (e.g. discover_port() timed out). Unlike a mid-session
-        disconnect, this is surfaced with a dialog -- the user just
-        took an explicit action (checking the box) that visibly didn't
-        do what it promised, unlike a background send failure.
-        """
-        logger.error("Live Blender Sync connect failed: %s", message)
-        self.live_sync_action.setChecked(False)
-        QMessageBox.warning(self, "Live Blender Sync Failed", message)
 
     _ASSET_FILE_FILTERS = {
         "audio": "Audio Files (*.wav *.mp3 *.flac *.ogg *.m4a)",
@@ -1623,22 +1344,14 @@ class MainWindow(QMainWindow):
         open" placeholder row) -- unlike the Timeline strip, the browser
         has a real, correct empty state to fall back to rather than
         nothing to do.
-
-        Also refreshes the Timecode readout via _update_timecode_widget()
-        -- a frame-list change (capture, delete, undo/redo, ...) can move
-        the playhead just as much as an explicit navigation action can,
-        so the timecode needs to stay in sync here too, not just from
-        _move_timeline_playhead().
         """
         self.project_browser_widget.set_project(self.project)
         if self.project is None or self.timeline is None:
-            self.timecode_widget.clear()
             return
         thumbnails_dir = self.project.project_path / "thumbnails"
         self.timeline_widget.refresh(
             self.timeline.frames, thumbnails_dir, self.timeline.current_index
         )
-        self._update_timecode_widget()
 
     def _move_timeline_playhead(self) -> None:
         """Move the Timeline strip's selection border to match the current
@@ -1656,25 +1369,6 @@ class MainWindow(QMainWindow):
         if self.project is None or self.timeline is None:
             return
         self.timeline_widget.set_current_index(self.timeline.current_index)
-        self._update_timecode_widget()
-
-    def _update_timecode_widget(self) -> None:
-        """Keep the Timecode readout in sync with the current playhead.
-
-        Called from both _refresh_timeline_widget() (frame list changed)
-        and _move_timeline_playhead() (playhead-only move) -- the same
-        two call sites that already keep the Timeline strip's own
-        selection border in sync, since the timecode needs updating on
-        exactly the same events. No-op guard mirrors every other
-        Timeline-dependent refresh method here (falls back to
-        TimecodeWidget's own empty-state placeholder via clear()).
-        """
-        if self.project is None or self.timeline is None:
-            self.timecode_widget.clear()
-            return
-        self.timecode_widget.set_state(
-            self.timeline.current_index, len(self.timeline), self.project.fps
-        )
 
     def _refresh_frame_action_bar(self) -> None:
         """Sync FrameActionBar's controls to whichever frame is now current,
@@ -1739,30 +1433,6 @@ class MainWindow(QMainWindow):
         """
         self.live_view_widget.set_safe_areas_visible(checked)
         logger.info("Safe Areas %s", "enabled" if checked else "disabled")
-
-    def _on_composition_guide_selected(self, guide_type: str) -> None:
-        """Switch the composition guide overlay to `guide_type`.
-
-        Connected once per action in _create_actions() via
-        functools.partial, so `guide_type` is which menu entry fired
-        this, not which one is currently checked -- QActionGroup already
-        guarantees exactly one of composition_guide_actions is checked
-        at a time, this just forwards that selection to LiveViewWidget.
-        Pure UI geometry like Safe Areas, so (per
-        _on_toggle_safe_areas's docstring) no worker-thread refresh is
-        needed here either.
-        """
-        self.live_view_widget.set_composition_guide(guide_type)
-        logger.info("Composition Guide set to %s", guide_type)
-
-    def _on_aspect_ratio_guide_selected(self, ratio_type: str) -> None:
-        """Switch the aspect ratio crop guide overlay to `ratio_type`.
-
-        Same functools.partial/QActionGroup pattern as
-        _on_composition_guide_selected -- see that method's docstring.
-        """
-        self.live_view_widget.set_aspect_ratio_guide(ratio_type)
-        logger.info("Aspect Ratio Guide set to %s", ratio_type)
 
     def _on_toggle_play(self) -> None:
         """Start or stop playback, per Feature 7.
@@ -2278,25 +1948,6 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
         self._refresh_frame_action_bar()
-        # Enables the bottom-right Export button (starts disabled -- see
-        # PlaybackControls.__init__ -- since there's nothing to export
-        # before a project is open) and refreshes the Export page's own
-        # preview/settings in case it's already showing, or gets shown
-        # later without another _on_show_export_page() refresh in
-        # between (that method also calls set_project(), but a project
-        # switch while the Export page happens to already be visible
-        # would otherwise leave it showing the previous project).
-        self.playback_controls.export_button.setEnabled(True)
-        self.export_page.set_project(project)
-        # Feature 11: any existing live-sync connection points at the
-        # PREVIOUS project's Blender launch (a different project_path,
-        # therefore a different port file) -- never valid for whatever
-        # project was just adopted, so disconnect and require the user
-        # to run "Open in Blender" again for this one, same as if the
-        # app had just started.
-        self.blender_sync_controller.disconnect_requested.emit()
-        self.live_sync_action.setChecked(False)
-        self.live_sync_action.setEnabled(False)
 
     def _show_missing_frames_dialog(
         self, project: Project, missing_files: list
@@ -2360,27 +2011,6 @@ class MainWindow(QMainWindow):
         box.setInformativeText(message)
         box.exec()
 
-    def _on_project_settings(self) -> None:
-        """Open the Project Settings dialog for the active project.
-
-        No-op with a log line if there's no active project yet -- same
-        guard pattern as _on_save_project(). ProjectSettingsDialog
-        writes its edited values directly onto self.project when Ok is
-        pressed (see its docstring), so on acceptance this just
-        reflects the possible name change in the window title and
-        persists the change immediately, the same way any other
-        project edit (e.g. Duplicate Frame) gets written to disk --
-        rather than silently leaving it only in memory until the next
-        manual Save.
-        """
-        if self.project is None:
-            logger.warning("Project Settings requested with no active project; ignoring")
-            return
-        dialog = ProjectSettingsDialog(self.project, self)
-        if dialog.exec():
-            self.setWindowTitle(f"FrameLabs — {self.project.name}")
-            self.project_controller.save_requested.emit(self.project)
-
     def _on_capture(self) -> None:
         """Request a capture on the worker thread.
 
@@ -2418,15 +2048,6 @@ class MainWindow(QMainWindow):
         # on top of that, per autosave_controller.py's module docstring.
         if self.project is not None:
             self.autosave_controller.autosave_requested.emit(self.project)
-        # Feature 11: forward the new frame to Blender, but only if Live
-        # Blender Sync is actually on -- see BlenderSyncController's own
-        # module docstring for why this is a direct signal emission
-        # here rather than an EventBus subscription over on that
-        # controller's side.
-        if self.live_sync_action.isChecked() and self.project is not None:
-            self.blender_sync_controller.frame_sync_requested.emit(
-                self.project, frame_number
-            )
 
     def _on_capture_failed(self, message: str) -> None:
         """Show Feature 4's "Capture Failed" dialog, with a Retry option.
@@ -2493,7 +2114,7 @@ class MainWindow(QMainWindow):
         self.inspector_panel.clear_camera_status()
 
     def closeEvent(self, event) -> None:
-        """Shut all ten worker threads down cleanly before closing.
+        """Shut all nine worker threads down cleanly before closing.
 
         Sets self._shutting_down = True FIRST, before touching any thread.
         This closes a real race: PlaybackController.playhead_advanced is a
@@ -2565,11 +2186,5 @@ class MainWindow(QMainWindow):
         self._blender_thread.finished.connect(self.blender_controller.deleteLater)
         self._blender_thread.quit()
         self._blender_thread.wait(2000)
-
-        self._blender_sync_thread.finished.connect(
-            self.blender_sync_controller.deleteLater
-        )
-        self._blender_sync_thread.quit()
-        self._blender_sync_thread.wait(2000)
 
         super().closeEvent(event)

@@ -942,7 +942,11 @@ class MainWindow(QMainWindow):
         if self.project is None or self.timeline is None:
             return
         dialog = TheaterViewDialog(
-            self.project.project_path, self.timeline.frames, index, parent=self
+            self.project.project_path,
+            self.timeline.frames,
+            index,
+            fps=self.project.fps,
+            parent=self,
         )
         dialog.exec()
 
@@ -970,6 +974,7 @@ class MainWindow(QMainWindow):
             self.project.project_path,
             self.timeline.frames,
             self.timeline.current_index,
+            fps=self.project.fps,
             parent=self,
         )
         dialog.exec()
