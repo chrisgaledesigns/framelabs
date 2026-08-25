@@ -32,6 +32,12 @@ dev = [
     "pytest-qt",
     "pytest-cov",
 ]
+# Enables GphotoBackend (DSLR/mirrorless tethering). Wraps the system
+# libgphoto2 library, so it's kept optional rather than a hard dependency
+# -- a webcam-only install of FrameLabs shouldn't require it.
+dslr = [
+    "gphoto2>=2.5",
+]
 
 [project.scripts]
 framelabs = "framelabs.app.main:main"
