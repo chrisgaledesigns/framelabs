@@ -52,7 +52,7 @@ class ExportController(QObject):
     export_progress = Signal(object)  # ExportProgress
 
     # Emitted from the main thread with an ExportRequest (built by
-    # ui/export_dialog.py's ExportDialog) as its payload; connected to
+    # ui/export_page.py's ExportPage) as its payload; connected to
     # _handle_export_requested below, which -- because this object lives
     # on the worker thread once moved -- Qt automatically delivers via a
     # queued connection.

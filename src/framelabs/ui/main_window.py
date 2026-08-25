@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +31,7 @@ from framelabs.capture.commands import (
 from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
-from framelabs.export.export_service import ExportProgress, ExportResult
+from framelabs.export.export_service import ExportProgress, ExportRequest, ExportResult
 from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
 from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
@@ -52,7 +53,7 @@ from framelabs.ui.composition_guides import (
     GUIDE_NONE,
 )
 from framelabs.ui.export_controller import ExportController
-from framelabs.ui.export_dialog import ExportDialog
+from framelabs.ui.export_page import ExportPage
 from framelabs.ui.inspector_panel import InspectorPanel
 from framelabs.ui.live_view_controller import LiveViewController
 from framelabs.ui.live_view_widget import LiveViewWidget
@@ -288,7 +289,7 @@ class MainWindow(QMainWindow):
 
         self.export_render_action = QAction("Export...", self)
         self.export_render_action.setShortcuts(self._shortcuts("export"))
-        self.export_render_action.triggered.connect(self._on_export_render)
+        self.export_render_action.triggered.connect(self._on_show_export_page)
 
         self.blender_action = QAction("Open in Blender", self)
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
@@ -389,7 +390,11 @@ class MainWindow(QMainWindow):
     def _build_central_panes(self) -> None:
         """Construct the full central area: the three-pane splitter on top,
         with the Timeline strip, the per-frame action bar, and Playback
-        controls stacked below it.
+        controls stacked below it -- all as one page of a QStackedWidget,
+        with the Export page (reached via the Export button in Playback
+        Controls' bottom-right corner, or the Export menu action) as the
+        other. A real page switch rather than a dialog popup, per Chris's
+        explicit choice -- see export_page.py's module docstring.
         """
         self.project_browser_widget = ProjectBrowserWidget()
         self.live_view_widget = LiveViewWidget()
@@ -401,14 +406,13 @@ class MainWindow(QMainWindow):
         splitter.addWidget(_titled_pane("Live View", self.live_view_widget))
         splitter.addWidget(_titled_pane("Inspector", self.inspector_panel))
 
-        # Live Camera View gets most of the space; side panes stay narrower.
-        # setSizes() controls the *initial* pixel widths -- QSplitter sizes
-        # panes by each widget's size hint otherwise, which is wrong here
-        # since "Inspector" and "Project Browser" are different text lengths.
-        # Project Browser gets slightly more than Inspector so the Frames
-        # grid's three-column thumbnail layout (per Chris's mockup) fits
-        # without immediately wrapping down to two columns.
-        splitter.setSizes([300, 730, 250])
+        # Live Camera View gets most of the space and stays centered; the
+        # two side panes are kept equal in width so Live View isn't pushed
+        # off-center. setSizes() controls the *initial* pixel widths --
+        # QSplitter sizes panes by each widget's size hint otherwise, which
+        # is wrong here since "Inspector" and "Project Browser" are
+        # different text lengths.
+        splitter.setSizes([275, 730, 275])
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 1)
@@ -440,7 +444,16 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.frame_action_bar)
         central_layout.addWidget(self.playback_controls)
 
-        self.setCentralWidget(central_widget)
+        self.export_page = ExportPage()
+        self.export_page.back_requested.connect(self._on_export_page_back)
+        self.export_page.export_requested.connect(self._on_export_page_export_requested)
+        self.export_page.open_in_blender_requested.connect(self._on_open_in_blender)
+
+        self._editor_page = central_widget
+        self._central_stack = QStackedWidget()
+        self._central_stack.addWidget(self._editor_page)
+        self._central_stack.addWidget(self.export_page)
+        self.setCentralWidget(self._central_stack)
 
     def _start_camera_controller(self) -> None:
         """Create the camera worker thread and wire its signals to the UI.
@@ -731,6 +744,7 @@ class MainWindow(QMainWindow):
         self.playback_controls.speed_combo.currentIndexChanged.connect(
             self._on_speed_changed
         )
+        self.playback_controls.export_button.clicked.connect(self._on_show_export_page)
 
     def _wire_timeline_widget(self) -> None:
         """Connect the TimelineWidget to real timeline state.
@@ -1125,28 +1139,38 @@ class MainWindow(QMainWindow):
         logger.info("Export deleted: %s", file_path)
         self.project_browser_widget.set_project(self.project)
 
-    def _on_export_render(self) -> None:
-        """Open the Export dialog, then fire only the formats the user
-        checked, on ExportController's worker thread -- see that
-        module's docstring for why exports run off the main thread.
+    def _on_show_export_page(self) -> None:
+        """Show the Export page, refreshed against whichever project is
+        currently open. Reached from the Export button in the
+        bottom-right corner of Playback Controls, or the "Export..."
+        menu action -- both funnel through here so the page is never
+        shown stale.
+        """
+        self.export_page.set_project(self.project)
+        self._central_stack.setCurrentWidget(self.export_page)
 
-        The dialog itself keeps its Export button disabled until at
-        least one format is checked, so a Cancel/close is the only way
-        to get here with nothing to run. Disables the menu action for
-        the export's duration so a second click can't overlap one
-        already in progress; re-enabled in both _on_export_succeeded()
-        and _on_export_failed(). Also shows a real progress dialog,
-        updated by _on_export_progress() as ExportController re-emits
+    def _on_export_page_back(self) -> None:
+        """Return to the editor from the Export page's Back button."""
+        self._central_stack.setCurrentWidget(self._editor_page)
+
+    def _on_export_page_export_requested(self, request: ExportRequest) -> None:
+        """Fire only the formats checked on the Export page, on
+        ExportController's worker thread -- see that module's
+        docstring for why exports run off the main thread.
+
+        The page itself keeps its own Export button disabled until at
+        least one format is checked, so this is only ever reached with
+        something real to run. Disables that same button for the
+        export's duration so a second click can't overlap one already
+        in progress; re-enabled in both _on_export_succeeded() and
+        _on_export_failed(). Also shows a real progress dialog, updated
+        by _on_export_progress() as ExportController re-emits
         export_all()'s per-frame progress -- no Cancel button, since
         export_service has no mid-export cancellation to hook it up to.
         """
         if self.project is None or self.project.project_path is None:
             return
-        dialog = ExportDialog(self.project, self)
-        if not dialog.exec():
-            return
-        request = dialog.export_request()
-        self.export_render_action.setEnabled(False)
+        self.export_page.set_export_in_progress(True)
 
         self._export_progress_dialog = QProgressDialog(
             "Starting export...", "", 0, 100, self
@@ -1186,7 +1210,7 @@ class MainWindow(QMainWindow):
         """Report the finished export, refreshing the Exports list either
         way -- a partial success (see export_all()'s docstring) still
         writes real files that belong there."""
-        self.export_render_action.setEnabled(True)
+        self.export_page.set_export_in_progress(False)
         self._close_export_progress()
         if self.project is not None:
             self.project_browser_widget.set_project(self.project)
@@ -1211,7 +1235,7 @@ class MainWindow(QMainWindow):
 
     def _on_export_failed(self, message: str) -> None:
         """Report a total export failure (e.g. no frames to export)."""
-        self.export_render_action.setEnabled(True)
+        self.export_page.set_export_in_progress(False)
         self._close_export_progress()
         QMessageBox.warning(self, "Export Failed", message)
 
@@ -1219,14 +1243,16 @@ class MainWindow(QMainWindow):
         """Feature 10: kick off the full manifest -> script -> launch
         pipeline on BlenderBridgeController's worker thread.
 
-        Disables the menu action for the duration, same pattern as
-        _on_export_render() -- re-enabled in every one of the
-        controller's four possible outcomes (succeeded/failed/
-        executable-not-found/already-running).
+        Disables the menu action -- and, since "Open in Blender" now
+        also lives as a button on the Export page (see that module's
+        docstring), that button too -- for the duration, re-enabled in
+        every one of the controller's four possible outcomes
+        (succeeded/failed/executable-not-found/already-running).
         """
         if self.project is None or self.project.project_path is None:
             return
         self.blender_action.setEnabled(False)
+        self.export_page.set_blender_action_in_progress(True)
         self.blender_controller.bridge_requested.emit(self.project)
 
     def _on_blender_bridge_succeeded(self, blend_output_path: str) -> None:
@@ -1246,6 +1272,7 @@ class MainWindow(QMainWindow):
         points at a Blender window that's no longer the current one.
         """
         self.blender_action.setEnabled(True)
+        self.export_page.set_blender_action_in_progress(False)
         logger.info("Blender launched, scene will be saved to %s", blend_output_path)
         self.live_sync_action.setEnabled(True)
         if self.live_sync_action.isChecked() and self.project is not None:
@@ -1256,6 +1283,7 @@ class MainWindow(QMainWindow):
         "no executable found" case (see _on_blender_executable_not_found
         for that one)."""
         self.blender_action.setEnabled(True)
+        self.export_page.set_blender_action_in_progress(False)
         QMessageBox.warning(self, "Open in Blender Failed", message)
 
     def _on_blender_executable_not_found(self) -> None:
@@ -1270,6 +1298,7 @@ class MainWindow(QMainWindow):
         remembered.
         """
         self.blender_action.setEnabled(True)
+        self.export_page.set_blender_action_in_progress(False)
         file_path, _ = QFileDialog.getOpenFileName(self, "Locate Blender Executable")
         if not file_path:
             return
@@ -1294,6 +1323,7 @@ class MainWindow(QMainWindow):
         check entirely.
         """
         self.blender_action.setEnabled(True)
+        self.export_page.set_blender_action_in_progress(False)
         box = QMessageBox(self)
         box.setWindowTitle("Blender Already Running")
         box.setText(
@@ -1315,6 +1345,7 @@ class MainWindow(QMainWindow):
 
         if box.clickedButton() is new_instance_button:
             self.blender_action.setEnabled(False)
+            self.export_page.set_blender_action_in_progress(True)
             self.blender_controller.force_new_instance_requested.emit(self.project)
         # Reuse or Cancel: leave the existing Blender window alone, no
         # further action needed.
@@ -2202,6 +2233,16 @@ class MainWindow(QMainWindow):
         self._refresh_onion_skin()
         self._refresh_timeline_widget()
         self._refresh_frame_action_bar()
+        # Enables the bottom-right Export button (starts disabled -- see
+        # PlaybackControls.__init__ -- since there's nothing to export
+        # before a project is open) and refreshes the Export page's own
+        # preview/settings in case it's already showing, or gets shown
+        # later without another _on_show_export_page() refresh in
+        # between (that method also calls set_project(), but a project
+        # switch while the Export page happens to already be visible
+        # would otherwise leave it showing the previous project).
+        self.playback_controls.export_button.setEnabled(True)
+        self.export_page.set_project(project)
         # Feature 11: any existing live-sync connection points at the
         # PREVIOUS project's Blender launch (a different project_path,
         # therefore a different port file) -- never valid for whatever

@@ -91,10 +91,10 @@ class ExportResult:
 
 @dataclass
 class ExportRequest:
-    """What a single Export dialog submission asked for.
+    """What a single Export page submission asked for.
 
     Replaces export_all() always running all three formats -- the
-    Export dialog (ui/export_dialog.py) builds one of these from
+    Export page (ui/export_page.py) builds one of these from
     whichever formats the user actually checked, plus their chosen
     per-format settings, and nothing else runs.
 
