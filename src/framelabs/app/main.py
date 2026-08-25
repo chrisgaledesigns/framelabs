@@ -63,7 +63,7 @@ def main() -> None:
     elif startup_dialog.chosen_path is not None:
         window.open_project_at(startup_dialog.chosen_path)
 
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec())
 
 
