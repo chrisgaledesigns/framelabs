@@ -607,6 +607,17 @@ class PlaybackControls(QWidget):
         layout.addWidget(self.speed_combo)
         layout.addStretch()
 
+        # Bottom-right corner of the whole editor, per Chris's mockup --
+        # this row is the bottommost thing in the central layout, and the
+        # stretch above puts this at its far-right edge. Opens the Export
+        # page rather than doing anything itself; starts disabled since
+        # there's nothing to export before a project is open (see
+        # MainWindow._adopt_project()).
+        self.export_button = QPushButton("Export")
+        self.export_button.setDefault(True)
+        self.export_button.setEnabled(False)
+        layout.addWidget(self.export_button)
+
 
 class FrameActionBar(QWidget):
     """Fixed action bar for Feature 5's remaining per-frame actions.
