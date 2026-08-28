@@ -309,6 +309,7 @@ def test_replace_frame_command_do_triggers_real_capture_on_first_call(tmp_path):
 
     assert camera_manager.capture_call_count == 1
     assert command.description == f"Replace Frame {frame.number}"
+    assert command.frame_number == frame.number
 
 
 def test_replace_frame_command_undo_restores_old_file(tmp_path):

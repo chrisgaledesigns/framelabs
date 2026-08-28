@@ -39,6 +39,7 @@ from PySide6.QtCore import QObject, Signal
 
 from framelabs.camera.camera_manager import CameraManager
 from framelabs.capture.capture_service import (
+    CameraLostServiceError,
     CaptureServiceError,
     DiskFullServiceError,
     capture_frame,
@@ -64,11 +65,25 @@ class CaptureController(QObject):
     capture_failed = Signal(str)
     disk_full = Signal(str)
 
+    # Emitted instead of capture_failed when CaptureServiceError turns
+    # out to be a CameraLostServiceError, per Feature 2's "Camera Lost"
+    # case -- lets MainWindow show that dialog's Reconnect/Retry/Cancel
+    # choices instead of the generic Capture Failed one.
+    camera_lost = Signal(str)
+
     # Emitted with the resulting ReplaceFrameCommand on success, so
     # MainWindow can record it on UndoManager (execute_already_done())
     # without re-running do() a second time.
     replace_succeeded = Signal(object)
     replace_failed = Signal(str)
+
+    # Same "Camera Lost" distinction as camera_lost above, for the
+    # Replace pipeline. Carries frame_number (not the failed command)
+    # since retrying means constructing a FRESH ReplaceFrameCommand for
+    # the same frame -- see ReplaceFrameCommand.frame_number's docstring
+    # for why re-running do() on the same, already-failed command isn't
+    # safe.
+    replace_camera_lost = Signal(str, int)
 
     # Emitted from the main thread with the current Project as its
     # payload; connected to _handle_capture_requested below, which --
@@ -121,6 +136,12 @@ class CaptureController(QObject):
         except DiskFullServiceError as exc:
             logger.error("Capture aborted, disk full: %s", exc)
             self.disk_full.emit(str(exc))
+        except CameraLostServiceError as exc:
+            # Caught ahead of the broader CaptureServiceError below so
+            # Feature 2's distinct "Camera Lost" case is never mistaken
+            # for the generic "Capture Failed" case.
+            logger.error("Capture aborted, camera lost: %s", exc)
+            self.camera_lost.emit(str(exc))
         except CaptureServiceError as exc:
             logger.error("Capture failed: %s", exc)
             self.capture_failed.emit(str(exc))
@@ -153,6 +174,14 @@ class CaptureController(QObject):
         except DiskFullServiceError as exc:
             logger.error("Replace aborted, disk full: %s", exc)
             self.disk_full.emit(str(exc))
+        except CameraLostServiceError as exc:
+            # Caught ahead of the broader CaptureServiceError below, same
+            # as _handle_capture_requested above. Carries frame_number so
+            # a Retry can construct a fresh ReplaceFrameCommand -- see
+            # ReplaceFrameCommand.frame_number's docstring for why this
+            # same, already-failed command can't just be re-do()'d.
+            logger.error("Replace aborted, camera lost: %s", exc)
+            self.replace_camera_lost.emit(str(exc), command.frame_number)
         except CaptureServiceError as exc:
             logger.error("Replace failed: %s", exc)
             self.replace_failed.emit(str(exc))

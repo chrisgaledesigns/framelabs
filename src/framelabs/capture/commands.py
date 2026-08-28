@@ -325,12 +325,28 @@ class ReplaceFrameCommand(Command):
         """Human-readable label, e.g. "Replace Frame 12"."""
         return f"Replace Frame {self._frame_number}"
 
+    @property
+    def frame_number(self) -> int:
+        """The frame this command replaces (or is replacing).
+
+        Exposed so a failed do() (e.g. CameraLostServiceError) can be
+        retried by constructing a fresh ReplaceFrameCommand for the same
+        frame -- re-calling do() on THIS instance after a failed first
+        attempt is not safe, since _old_backup_dir may already be set,
+        which would route the retry into do()'s redo branch instead of
+        triggering a new capture.
+        """
+        return self._frame_number
+
     def do(self) -> None:
         """Trigger a real capture the first time; reapply it on every redo.
 
         Raises:
             CaptureServiceError: If the first do()'s camera trigger fails,
                 or if the pre-capture backup of the existing files fails.
+            CameraLostServiceError: If the first do()'s camera trigger
+                failed because the camera disconnected. A subclass of
+                CaptureServiceError.
             DiskFullServiceError: If the first do()'s write fails because
                 the disk is full. A subclass of CaptureServiceError.
         """

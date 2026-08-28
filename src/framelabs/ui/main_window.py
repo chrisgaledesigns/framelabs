@@ -516,8 +516,12 @@ class MainWindow(QMainWindow):
         self.capture_controller.capture_succeeded.connect(self._on_capture_succeeded)
         self.capture_controller.capture_failed.connect(self._on_capture_failed)
         self.capture_controller.disk_full.connect(self._on_disk_full)
+        self.capture_controller.camera_lost.connect(self._on_camera_lost)
         self.capture_controller.replace_succeeded.connect(self._on_replace_succeeded)
         self.capture_controller.replace_failed.connect(self._on_replace_failed)
+        self.capture_controller.replace_camera_lost.connect(
+            self._on_replace_camera_lost
+        )
 
         self._capture_thread.start()
 
@@ -2027,6 +2031,31 @@ class MainWindow(QMainWindow):
         box.setInformativeText(message)
         box.exec()
 
+    def _on_replace_camera_lost(self, message: str, frame_number: int) -> None:
+        """Show Feature 2's "Camera Lost" dialog for a disconnect mid-Replace.
+
+        Same shape and button choices as _on_camera_lost above, but
+        Retry constructs a FRESH ReplaceFrameCommand for frame_number via
+        _replace_frame() rather than reusing the one that just failed --
+        see ReplaceFrameCommand.frame_number's docstring for why
+        re-running do() on that same command isn't safe.
+        """
+        logger.error("Camera lost during replace: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Camera Lost")
+        box.setText("Camera Lost")
+        box.setInformativeText(message)
+        reconnect_button = box.addButton("Reconnect", QMessageBox.ButtonRole.ActionRole)
+        retry_button = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is reconnect_button:
+            self._on_rescan_camera()
+        elif clicked is retry_button:
+            self._replace_frame(frame_number)
+
     def _on_toggle_marker(self) -> None:
         """Toggle the marker on the currently-selected frame -- action bar
         Marker button.
@@ -2384,7 +2413,9 @@ class MainWindow(QMainWindow):
         manual Save.
         """
         if self.project is None:
-            logger.warning("Project Settings requested with no active project; ignoring")
+            logger.warning(
+                "Project Settings requested with no active project; ignoring"
+            )
             return
         dialog = ProjectSettingsDialog(self.project, self)
         if dialog.exec():
@@ -2458,6 +2489,42 @@ class MainWindow(QMainWindow):
         box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         box.exec()
         if box.clickedButton() is retry_button:
+            self._on_capture()
+
+    def _on_camera_lost(self, message: str) -> None:
+        """Show Feature 2's "Camera Lost" dialog, for a disconnect mid-capture.
+
+        Distinct from _on_capture_failed's generic "Capture Failed"
+        dialog -- CaptureController only emits camera_lost once
+        CameraManager has confirmed the camera actually disconnected
+        (not a transient trigger failure). Per Feature 2's acceptance
+        criteria, no partial frame is ever written before this fires, so
+        the timeline is left intact and the project stays fully usable no
+        matter which button is clicked.
+
+        Reconnect asks the camera-scanning worker thread for an
+        immediate rescan (the same request the Inspector's Rescan
+        control makes) and then just dismisses -- reconnecting is
+        inherently asynchronous, so the user sees the Inspector's camera
+        status update once it succeeds and can press Capture again
+        themselves. Retry re-runs _on_capture() immediately, for the
+        common case where the camera was already physically reconnected
+        by the time the user reacts to the dialog.
+        """
+        logger.error("Camera lost: %s", message)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Camera Lost")
+        box.setText("Camera Lost")
+        box.setInformativeText(message)
+        reconnect_button = box.addButton("Reconnect", QMessageBox.ButtonRole.ActionRole)
+        retry_button = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is reconnect_button:
+            self._on_rescan_camera()
+        elif clicked is retry_button:
             self._on_capture()
 
     def _on_disk_full(self, message: str) -> None:

@@ -4,8 +4,13 @@ import cv2
 import numpy as np
 import pytest
 
-from framelabs.camera.camera_interface import CameraError, CameraMetadata
+from framelabs.camera.camera_interface import (
+    CameraDisconnectedError,
+    CameraError,
+    CameraMetadata,
+)
 from framelabs.capture.capture_service import (
+    CameraLostServiceError,
     CaptureServiceError,
     DiskFullServiceError,
     FrameNotFoundError,
@@ -41,12 +46,17 @@ class FakeCameraManager:
     failure behavior without touching real hardware.
     """
 
-    def __init__(self, capture_should_fail: bool = False):
+    def __init__(
+        self, capture_should_fail: bool = False, camera_disconnected: bool = False
+    ):
         self.capture_should_fail = capture_should_fail
+        self.camera_disconnected = camera_disconnected
         self.capture_call_count = 0
 
     def capture(self) -> bytes:
         self.capture_call_count += 1
+        if self.camera_disconnected:
+            raise CameraDisconnectedError("simulated camera disconnect")
         if self.capture_should_fail:
             raise CameraError("simulated camera trigger failure")
         return _real_png_bytes()
@@ -101,6 +111,26 @@ def test_capture_frame_camera_trigger_failure_raises_and_writes_nothing(tmp_path
     event_bus, received = _make_event_bus()
 
     with pytest.raises(CaptureServiceError):
+        capture_frame(project, camera_manager, event_bus)
+
+    assert project.frames == []
+    assert list((project.project_path / "images").iterdir()) == []
+    assert received == []
+
+
+def test_capture_frame_camera_disconnect_raises_camera_lost_and_writes_nothing(
+    tmp_path,
+):
+    """Feature 2's "Camera Lost" case: a real disconnect during capture
+    must raise the distinct CameraLostServiceError (not just the generic
+    CaptureServiceError it subclasses), and must leave the timeline and
+    on-disk images untouched -- same "no data lost" guarantee as a plain
+    trigger failure."""
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager(camera_disconnected=True)
+    event_bus, received = _make_event_bus()
+
+    with pytest.raises(CameraLostServiceError):
         capture_frame(project, camera_manager, event_bus)
 
     assert project.frames == []
@@ -339,6 +369,25 @@ def test_replace_frame_camera_failure_raises_and_keeps_original_frame(tmp_path):
     camera_manager.capture_should_fail = True
 
     with pytest.raises(CaptureServiceError):
+        replace_frame(project, camera_manager, event_bus, frame.number)
+
+    assert project.frames == [frame]
+
+
+def test_replace_frame_camera_disconnect_raises_camera_lost_and_keeps_original_frame(
+    tmp_path,
+):
+    """Same "Camera Lost" distinction as capture_frame, for Replace's
+    shared trigger/write pipeline: a real disconnect must raise
+    CameraLostServiceError and leave the original frame untouched."""
+    project = _make_project(tmp_path)
+    camera_manager = FakeCameraManager()
+    event_bus, _ = _make_event_bus()
+    frame = capture_frame(project, camera_manager, event_bus)
+
+    camera_manager.camera_disconnected = True
+
+    with pytest.raises(CameraLostServiceError):
         replace_frame(project, camera_manager, event_bus, frame.number)
 
     assert project.frames == [frame]

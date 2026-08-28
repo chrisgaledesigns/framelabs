@@ -16,7 +16,11 @@ the worker thread once these signals fire for real.
 
 from unittest.mock import MagicMock, patch
 
-from framelabs.capture.capture_service import CaptureServiceError, DiskFullServiceError
+from framelabs.capture.capture_service import (
+    CameraLostServiceError,
+    CaptureServiceError,
+    DiskFullServiceError,
+)
 from framelabs.ui.capture_controller import CaptureController
 
 
@@ -102,6 +106,30 @@ def test_handle_capture_requested_disk_full_emits_disk_full_not_capture_failed(
 
 
 @patch("framelabs.ui.capture_controller.capture_frame")
+def test_handle_capture_requested_camera_lost_emits_camera_lost_not_capture_failed(
+    mock_capture_frame,
+):
+    """CameraLostServiceError is a CaptureServiceError subclass -- it
+    must be caught first, so Feature 2's "Camera Lost" case surfaces via
+    camera_lost, never the generic capture_failed."""
+    controller, _, _ = _make_controller()
+    mock_capture_frame.side_effect = CameraLostServiceError("Camera disconnected")
+
+    succeeded_slot = MagicMock()
+    failed_slot = MagicMock()
+    camera_lost_slot = MagicMock()
+    controller.capture_succeeded.connect(succeeded_slot)
+    controller.capture_failed.connect(failed_slot)
+    controller.camera_lost.connect(camera_lost_slot)
+
+    controller._handle_capture_requested(MagicMock())  # should not raise
+
+    camera_lost_slot.assert_called_once_with("Camera disconnected")
+    failed_slot.assert_not_called()
+    succeeded_slot.assert_not_called()
+
+
+@patch("framelabs.ui.capture_controller.capture_frame")
 def test_handle_capture_requested_generic_service_error_emits_capture_failed(
     mock_capture_frame,
 ):
@@ -168,6 +196,26 @@ def test_handle_replace_requested_disk_full_emits_disk_full():
     controller._handle_replace_requested(mock_command)  # should not raise
 
     disk_full_slot.assert_called_once_with("Disk full")
+    replace_failed_slot.assert_not_called()
+
+
+def test_handle_replace_requested_camera_lost_emits_replace_camera_lost():
+    """Same camera-lost precedence as capture: a CameraLostServiceError
+    from command.do() must surface via replace_camera_lost (with the
+    command's frame_number), not replace_failed."""
+    controller, _, _ = _make_controller()
+    mock_command = MagicMock()
+    mock_command.do.side_effect = CameraLostServiceError("Camera disconnected")
+    mock_command.frame_number = 12
+
+    replace_failed_slot = MagicMock()
+    replace_camera_lost_slot = MagicMock()
+    controller.replace_failed.connect(replace_failed_slot)
+    controller.replace_camera_lost.connect(replace_camera_lost_slot)
+
+    controller._handle_replace_requested(mock_command)  # should not raise
+
+    replace_camera_lost_slot.assert_called_once_with("Camera disconnected", 12)
     replace_failed_slot.assert_not_called()
 
 

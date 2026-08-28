@@ -26,7 +26,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from framelabs.camera.camera_interface import CameraError
+from framelabs.camera.camera_interface import CameraDisconnectedError, CameraError
 from framelabs.camera.camera_manager import CameraManager
 from framelabs.capture.frame_writer import (
     CaptureWriteError,
@@ -62,6 +62,22 @@ class DiskFullServiceError(CaptureServiceError):
     OSError with errno.ENOSPC. Lets the UI layer show Feature 4's
     distinct "Disk Full" / "Capture Aborted" dialog instead of the
     generic capture-failed one.
+    """
+
+
+class CameraLostServiceError(CaptureServiceError):
+    """Raised when the camera trigger failed because the camera has
+    actually disconnected, per Feature 2's "Camera Disconnect" case.
+
+    A subclass of CaptureServiceError, not a sibling -- any existing
+    caller that catches CaptureServiceError still catches this too. Wraps
+    camera_manager.CameraDisconnectedError, which CameraManager only
+    raises after confirming (via is_connected()) that the camera is truly
+    gone rather than a transient trigger failure. Lets the UI layer show
+    Feature 2's distinct "Camera Lost" dialog (Reconnect / Retry / Cancel)
+    instead of the generic capture-failed one. The frame's files are never
+    written when this is raised, so the timeline stays intact and no data
+    is lost, per Feature 2's acceptance criteria.
     """
 
 
@@ -493,6 +509,16 @@ def _write_captured_image(
     # Trigger + Receive
     try:
         image_bytes = camera_manager.capture()
+    except CameraDisconnectedError as exc:
+        # Caught ahead of the broader CameraError below so Feature 2's
+        # distinct "Camera Lost" case is never mistaken for the generic
+        # "Capture Failed" case -- CameraManager.capture() has already
+        # confirmed the camera is truly gone (not a transient failure)
+        # and published CAMERA_DISCONNECTED by the time this is raised.
+        logger.error("Camera lost capturing frame %d: %s", frame_number, exc)
+        raise CameraLostServiceError(
+            f"Camera disconnected during capture: {exc}"
+        ) from exc
     except CameraError as exc:
         logger.error("Capture failed for frame %d: %s", frame_number, exc)
         raise CaptureServiceError(f"Camera capture failed: {exc}") from exc
