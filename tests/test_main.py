@@ -31,6 +31,7 @@ def _patch_main_collaborators():
     names = (
         "setup_logging",
         "QApplication",
+        "QTimer",
         "FrameLabsSplashScreen",
         "PluginManager",
         "Config",
@@ -96,6 +97,7 @@ def test_main_accepted_with_new_project_opens_created_project():
         window.open_created_project.assert_called_once_with(startup_dialog.new_project)
         window.open_project_at.assert_not_called()
         window.show.assert_called_once()
+        mocks["QTimer"].singleShot.assert_called_once_with(0, window.showMaximized)
 
 
 def test_main_accepted_with_chosen_path_opens_project_at_path():
@@ -111,6 +113,7 @@ def test_main_accepted_with_chosen_path_opens_project_at_path():
         window.open_project_at.assert_called_once_with("/tmp/Robot Walk")
         window.open_created_project.assert_not_called()
         window.show.assert_called_once()
+        mocks["QTimer"].singleShot.assert_called_once_with(0, window.showMaximized)
 
 
 def test_main_accepted_with_neither_opens_nothing_but_still_shows_window():
@@ -126,6 +129,7 @@ def test_main_accepted_with_neither_opens_nothing_but_still_shows_window():
         window.open_created_project.assert_not_called()
         window.open_project_at.assert_not_called()
         window.show.assert_called_once()
+        mocks["QTimer"].singleShot.assert_called_once_with(0, window.showMaximized)
 
 
 def test_main_accepted_exits_with_app_exec_return_code():
