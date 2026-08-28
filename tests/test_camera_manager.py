@@ -4,7 +4,11 @@ Uses mocks for cv2.VideoCapture so these tests never depend on real
 hardware being connected, per the Developer Handbook's testing rule.
 """
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from framelabs.camera.camera_interface import (
     CameraDisconnectedError,
@@ -102,6 +106,87 @@ def test_connect_failure_logs_and_reraises(mock_webcam_backend_class):
         assert False, "Expected CameraError to be raised"
     except CameraError:
         pass
+
+    assert manager._active_backend is None
+    assert manager._active_camera_id is None
+
+
+def _install_fake_gphoto_backend_module(mock_backend):
+    """Inject a fake framelabs.camera.gphoto_backend module into
+    sys.modules, standing in for the real one.
+
+    `from framelabs.camera.gphoto_backend import GphotoBackend` (inside
+    CameraManager._create_backend) checks sys.modules before touching
+    disk, so this lets these dispatch tests exercise the real import
+    statement without needing the real gphoto2 package -- or a real
+    gphoto_backend.py import -- to succeed. That matters because these
+    tests are about CameraManager's routing logic, not GphotoBackend
+    itself, and should pass on any machine regardless of whether the
+    optional "dslr" extra is installed.
+    """
+    fake_module = types.ModuleType("framelabs.camera.gphoto_backend")
+    mock_gphoto_backend_class = MagicMock(return_value=mock_backend)
+    fake_module.GphotoBackend = mock_gphoto_backend_class
+    return fake_module, mock_gphoto_backend_class
+
+
+def test_connect_with_string_camera_id_uses_gphoto_backend():
+    """A str camera_id (a gphoto2 port address) should be routed to
+    GphotoBackend, not WebcamBackend."""
+    mock_backend = MagicMock()
+    fake_module, mock_gphoto_backend_class = _install_fake_gphoto_backend_module(
+        mock_backend
+    )
+
+    with patch.dict(sys.modules, {"framelabs.camera.gphoto_backend": fake_module}):
+        manager = CameraManager()
+        manager.connect("usb:001,004")
+
+    mock_gphoto_backend_class.assert_called_once_with("usb:001,004", "")
+    mock_backend.connect.assert_called_once()
+    assert manager._active_backend is mock_backend
+    assert manager._active_camera_id == "usb:001,004"
+
+
+def test_connect_with_string_camera_id_passes_known_model_name():
+    """If rescan_once() previously saw this port address alongside a
+    model name, connect() should hand that name to GphotoBackend."""
+    mock_backend = MagicMock()
+    fake_module, mock_gphoto_backend_class = _install_fake_gphoto_backend_module(
+        mock_backend
+    )
+
+    with patch.dict(sys.modules, {"framelabs.camera.gphoto_backend": fake_module}):
+        manager = CameraManager()
+        manager._known_gphoto_models = {"usb:001,004": "Nikon DSC D850"}
+        manager.connect("usb:001,004")
+
+    mock_gphoto_backend_class.assert_called_once_with("usb:001,004", "Nikon DSC D850")
+
+
+def test_connect_with_string_camera_id_publishes_camera_connected_event():
+    mock_backend = MagicMock()
+    mock_event_bus = MagicMock()
+    fake_module, _ = _install_fake_gphoto_backend_module(mock_backend)
+
+    with patch.dict(sys.modules, {"framelabs.camera.gphoto_backend": fake_module}):
+        manager = CameraManager(event_bus=mock_event_bus)
+        manager.connect("usb:001,004")
+
+    mock_event_bus.publish.assert_called_once_with(
+        "CAMERA_CONNECTED", {"camera_id": "usb:001,004"}
+    )
+
+
+def test_connect_with_string_camera_id_without_gphoto2_raises_camera_error():
+    """If the optional gphoto2 package isn't installed, connecting to a
+    DSLR camera_id should raise a friendly CameraError rather than an
+    ImportError leaking out of CameraManager."""
+    manager = CameraManager()
+
+    with patch.dict(sys.modules, {"framelabs.camera.gphoto_backend": None}):
+        with pytest.raises(CameraError):
+            manager.connect("usb:001,004")
 
     assert manager._active_backend is None
     assert manager._active_camera_id is None
@@ -255,7 +340,13 @@ def test_rescan_once_returns_current_list_and_publishes_on_first_call():
     event_bus = MagicMock()
     manager = CameraManager(event_bus=event_bus)
 
-    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]),
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras",
+            return_value=[],
+        ),
+    ):
         result = manager.rescan_once()
 
     assert result == [0, 1]
@@ -270,7 +361,13 @@ def test_rescan_once_does_not_publish_when_list_unchanged():
     event_bus = MagicMock()
     manager = CameraManager(event_bus=event_bus)
 
-    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]),
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras",
+            return_value=[],
+        ),
+    ):
         manager.rescan_once()
         result = manager.rescan_once()
 
@@ -286,10 +383,22 @@ def test_rescan_once_publishes_again_when_list_changes():
     event_bus = MagicMock()
     manager = CameraManager(event_bus=event_bus)
 
-    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0]):
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0]),
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras",
+            return_value=[],
+        ),
+    ):
         manager.rescan_once()
 
-    with patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]):
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0, 1]),
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras",
+            return_value=[],
+        ),
+    ):
         result = manager.rescan_once()
 
     assert result == [0, 1]
@@ -297,6 +406,25 @@ def test_rescan_once_publishes_again_when_list_changes():
     event_bus.publish.assert_called_with(
         "AVAILABLE_CAMERAS_CHANGED", {"available_cameras": [0, 1]}
     )
+
+
+def test_rescan_once_includes_gphoto_cameras_by_port_address():
+    """A detected DSLR should appear in the available list by its port
+    address (its camera_id), alongside any webcams."""
+    event_bus = MagicMock()
+    manager = CameraManager(event_bus=event_bus)
+
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams", return_value=[0]),
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras",
+            return_value=[("Nikon DSC D850", "usb:001,004")],
+        ),
+    ):
+        result = manager.rescan_once()
+
+    assert result == [0, "usb:001,004"]
+    assert manager._known_gphoto_models == {"usb:001,004": "Nikon DSC D850"}
 
 
 def test_rescan_once_skips_scan_while_capture_in_progress():
@@ -307,10 +435,16 @@ def test_rescan_once_skips_scan_while_capture_in_progress():
     manager._known_available_cameras = [0]
     manager._capture_in_progress = True
 
-    with patch("framelabs.camera.camera_manager.discover_webcams") as mock_discover:
+    with (
+        patch("framelabs.camera.camera_manager.discover_webcams") as mock_discover,
+        patch(
+            "framelabs.camera.camera_manager.discover_gphoto_cameras"
+        ) as mock_discover_gphoto,
+    ):
         result = manager.rescan_once()
 
     mock_discover.assert_not_called()
+    mock_discover_gphoto.assert_not_called()
     event_bus.publish.assert_not_called()
     assert result == [0]
 
