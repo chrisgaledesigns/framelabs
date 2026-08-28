@@ -206,6 +206,40 @@ class CameraManager:
         finally:
             self._capture_in_progress = False
 
+    def set_iso(self, value: int) -> None:
+        """Set the ISO value on the currently active camera.
+
+        A genuine config write on GphotoBackend (DSLR); a no-op warning on
+        WebcamBackend, per CameraInterface's contract -- CameraManager
+        doesn't need to know which.
+
+        Raises:
+            CameraError: if there is no active camera.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        self._active_backend.set_iso(value)
+
+    def set_shutter(self, value: str) -> None:
+        """Set the shutter speed on the currently active camera.
+
+        Raises:
+            CameraError: if there is no active camera.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        self._active_backend.set_shutter(value)
+
+    def set_aperture(self, value: str) -> None:
+        """Set the aperture value on the currently active camera.
+
+        Raises:
+            CameraError: if there is no active camera.
+        """
+        if self._active_backend is None:
+            raise CameraError("No active camera. Call connect() first.")
+        self._active_backend.set_aperture(value)
+
     def start_live_view(self) -> None:
         """Start the active camera's live preview feed.
 

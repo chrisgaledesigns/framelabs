@@ -143,7 +143,8 @@ def test_handle_rescan_requested_calls_scan(mock_scan):
 def test_on_camera_connected_event_emits_camera_connected_with_display_name():
     """When CAMERA_CONNECTED fires, the controller should store the
     camera_id, look up real metadata, and emit camera_connected with the
-    backend's actual display_name -- not a hardcoded or guessed string."""
+    backend's actual display_name and backend_type -- not hardcoded or
+    guessed values."""
     controller, mock_manager, _ = _make_controller()
     mock_manager.get_active_camera_metadata.return_value = CameraMetadata(
         camera_id="webcam-0", display_name="Webcam (device 0)", backend_type="webcam"
@@ -155,7 +156,24 @@ def test_on_camera_connected_event_emits_camera_connected_with_display_name():
     controller._on_camera_connected_event({"camera_id": 0})
 
     assert controller._connected_camera_id == 0
-    connected_slot.assert_called_once_with("Webcam (device 0)")
+    connected_slot.assert_called_once_with("Webcam (device 0)", "webcam")
+
+
+def test_on_camera_connected_event_emits_gphoto_backend_type_for_dslr():
+    """A DSLR connection should report "gphoto" as its backend_type, so
+    MainWindow knows to enable the Inspector's ISO/Shutter/Aperture
+    controls."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.get_active_camera_metadata.return_value = CameraMetadata(
+        camera_id="usb:001,004", display_name="Nikon DSC D850", backend_type="gphoto"
+    )
+
+    connected_slot = MagicMock()
+    controller.camera_connected.connect(connected_slot)
+
+    controller._on_camera_connected_event({"camera_id": "usb:001,004"})
+
+    connected_slot.assert_called_once_with("Nikon DSC D850", "gphoto")
 
 
 def test_on_camera_connected_event_metadata_failure_does_not_emit():
@@ -174,6 +192,63 @@ def test_on_camera_connected_event_metadata_failure_does_not_emit():
     controller._on_camera_connected_event({"camera_id": 0})  # should not raise
 
     connected_slot.assert_not_called()
+
+
+def test_handle_iso_change_requested_delegates_to_camera_manager():
+    """An ISO change request should call CameraManager.set_iso() with the
+    requested value, unchanged."""
+    controller, mock_manager, _ = _make_controller()
+
+    controller._handle_iso_change_requested(800)
+
+    mock_manager.set_iso.assert_called_once_with(800)
+
+
+def test_handle_iso_change_requested_swallows_camera_error():
+    """If the camera vanished between the Inspector click and this slot
+    running, CameraManager.set_iso() raising CameraError should not
+    propagate -- matches the backends' own "never raise on a rejected or
+    unsupported config write" contract."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.set_iso.side_effect = CameraError("No active camera.")
+
+    controller._handle_iso_change_requested(800)  # should not raise
+
+
+def test_handle_shutter_change_requested_delegates_to_camera_manager():
+    """A shutter change request should call CameraManager.set_shutter()
+    with the requested value, unchanged."""
+    controller, mock_manager, _ = _make_controller()
+
+    controller._handle_shutter_change_requested("1/250")
+
+    mock_manager.set_shutter.assert_called_once_with("1/250")
+
+
+def test_handle_shutter_change_requested_swallows_camera_error():
+    """A CameraError from set_shutter() should not propagate."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.set_shutter.side_effect = CameraError("No active camera.")
+
+    controller._handle_shutter_change_requested("1/250")  # should not raise
+
+
+def test_handle_aperture_change_requested_delegates_to_camera_manager():
+    """An aperture change request should call CameraManager.set_aperture()
+    with the requested value, unchanged."""
+    controller, mock_manager, _ = _make_controller()
+
+    controller._handle_aperture_change_requested("f/5.6")
+
+    mock_manager.set_aperture.assert_called_once_with("f/5.6")
+
+
+def test_handle_aperture_change_requested_swallows_camera_error():
+    """A CameraError from set_aperture() should not propagate."""
+    controller, mock_manager, _ = _make_controller()
+    mock_manager.set_aperture.side_effect = CameraError("No active camera.")
+
+    controller._handle_aperture_change_requested("f/5.6")  # should not raise
 
 
 def test_on_camera_disconnected_event_clears_state_and_emits():

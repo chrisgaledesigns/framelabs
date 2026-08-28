@@ -524,6 +524,79 @@ def test_stop_live_view_with_no_active_camera_is_noop():
 
 
 @patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_set_iso_delegates_to_backend(mock_webcam_backend_class):
+    """set_iso() should call the active backend's set_iso() with the
+    given value, unchanged."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.set_iso(800)
+
+    mock_backend.set_iso.assert_called_once_with(800)
+
+
+def test_set_iso_with_no_active_camera_raises_camera_error():
+    """set_iso() with nothing connected should raise CameraError."""
+    manager = CameraManager()
+
+    try:
+        manager.set_iso(800)
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_set_shutter_delegates_to_backend(mock_webcam_backend_class):
+    """set_shutter() should call the active backend's set_shutter()."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.set_shutter("1/250")
+
+    mock_backend.set_shutter.assert_called_once_with("1/250")
+
+
+def test_set_shutter_with_no_active_camera_raises_camera_error():
+    """set_shutter() with nothing connected should raise CameraError."""
+    manager = CameraManager()
+
+    try:
+        manager.set_shutter("1/250")
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
+def test_set_aperture_delegates_to_backend(mock_webcam_backend_class):
+    """set_aperture() should call the active backend's set_aperture()."""
+    mock_backend = MagicMock()
+    mock_webcam_backend_class.return_value = mock_backend
+
+    manager = CameraManager()
+    manager.connect(0)
+    manager.set_aperture("f/5.6")
+
+    mock_backend.set_aperture.assert_called_once_with("f/5.6")
+
+
+def test_set_aperture_with_no_active_camera_raises_camera_error():
+    """set_aperture() with nothing connected should raise CameraError."""
+    manager = CameraManager()
+
+    try:
+        manager.set_aperture("f/5.6")
+        assert False, "Expected CameraError to be raised"
+    except CameraError:
+        pass
+
+
+@patch("framelabs.camera.camera_manager.WebcamBackend")
 def test_read_preview_frame_returns_backend_bytes(mock_webcam_backend_class):
     """read_preview_frame() should return the backend's bytes unchanged."""
     mock_backend = MagicMock()

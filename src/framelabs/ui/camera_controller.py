@@ -48,7 +48,7 @@ class CameraController(QObject):
     """
 
     camera_connecting = Signal()
-    camera_connected = Signal(str)
+    camera_connected = Signal(str, str)  # display_name, backend_type
     camera_disconnected = Signal()
     no_camera_found = Signal()
 
@@ -58,6 +58,15 @@ class CameraController(QObject):
     # correct way to ask the worker thread to do something from the UI
     # thread without calling a CameraManager method directly from there.
     rescan_requested = Signal()
+
+    # Same queued-connection pattern as rescan_requested above, for the
+    # Inspector's DSLR-only ISO/Shutter/Aperture controls: the UI thread
+    # emits one of these instead of calling CameraManager directly, since
+    # CameraManager (and the backend it drives) lives on this worker
+    # thread once moved.
+    iso_change_requested = Signal(int)
+    shutter_change_requested = Signal(str)
+    aperture_change_requested = Signal(str)
 
     def __init__(self, event_bus: EventBus) -> None:
         """Build the controller against a shared, already-existing EventBus.
@@ -76,6 +85,9 @@ class CameraController(QObject):
         event_bus.subscribe("CAMERA_DISCONNECTED", self._on_camera_disconnected_event)
 
         self.rescan_requested.connect(self._handle_rescan_requested)
+        self.iso_change_requested.connect(self._handle_iso_change_requested)
+        self.shutter_change_requested.connect(self._handle_shutter_change_requested)
+        self.aperture_change_requested.connect(self._handle_aperture_change_requested)
 
     def start_scanning(self) -> None:
         """Begin periodic scanning. Connect this to QThread.started.
@@ -138,9 +150,37 @@ class CameraController(QObject):
         except CameraError as exc:
             logger.error("Could not read metadata for newly connected camera: %s", exc)
             return
-        self.camera_connected.emit(metadata.display_name)
+        self.camera_connected.emit(metadata.display_name, metadata.backend_type)
 
     def _on_camera_disconnected_event(self, payload: dict[str, Any]) -> None:
         """React to CAMERA_DISCONNECTED, however it was triggered."""
         self._connected_camera_id = None
         self.camera_disconnected.emit()
+
+    def _handle_iso_change_requested(self, value: int) -> None:
+        """Slot for an Inspector-driven ISO change. Always runs on the
+        worker thread, so it's safe to touch the backend directly here.
+
+        Swallows CameraError (e.g. the camera vanished between the user's
+        click and this slot running) rather than raising -- matches
+        CameraManager's own backends, which never raise on a rejected or
+        unsupported config write, just warn and move on.
+        """
+        try:
+            self.camera_manager.set_iso(value)
+        except CameraError as exc:
+            logger.warning("Could not set ISO to %r: %s", value, exc)
+
+    def _handle_shutter_change_requested(self, value: str) -> None:
+        """Slot for an Inspector-driven shutter speed change."""
+        try:
+            self.camera_manager.set_shutter(value)
+        except CameraError as exc:
+            logger.warning("Could not set shutter to %r: %s", value, exc)
+
+    def _handle_aperture_change_requested(self, value: str) -> None:
+        """Slot for an Inspector-driven aperture change."""
+        try:
+            self.camera_manager.set_aperture(value)
+        except CameraError as exc:
+            logger.warning("Could not set aperture to %r: %s", value, exc)

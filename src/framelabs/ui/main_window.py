@@ -485,6 +485,16 @@ class MainWindow(QMainWindow):
         self.camera_controller.camera_disconnected.connect(self._on_camera_disconnected)
         self.camera_controller.no_camera_found.connect(self._on_no_camera_found)
 
+        self.inspector_panel.iso_changed.connect(
+            self.camera_controller.iso_change_requested.emit
+        )
+        self.inspector_panel.shutter_changed.connect(
+            self.camera_controller.shutter_change_requested.emit
+        )
+        self.inspector_panel.aperture_changed.connect(
+            self.camera_controller.aperture_change_requested.emit
+        )
+
         self._camera_thread.start()
 
     def _start_capture_controller(self) -> None:
@@ -2480,17 +2490,26 @@ class MainWindow(QMainWindow):
         """Reflect an in-progress scan in the Inspector's Camera field."""
         self.inspector_panel.set_camera_status("Scanning...")
 
-    def _on_camera_connected(self, display_name: str) -> None:
-        """Reflect a successful camera connection in the Inspector."""
+    def _on_camera_connected(self, display_name: str, backend_type: str) -> None:
+        """Reflect a successful camera connection in the Inspector.
+
+        ISO/Shutter/Aperture only get enabled for a real DSLR ("gphoto"
+        backend_type) -- a webcam connection reflects the new status text
+        but leaves those controls disabled, since WebcamBackend's
+        set_iso/set_shutter/set_aperture are no-ops.
+        """
         self.inspector_panel.set_camera_status(f"{display_name} Connected")
+        self.inspector_panel.set_dslr_controls_enabled(backend_type == "gphoto")
 
     def _on_camera_disconnected(self) -> None:
         """Reflect a camera disconnect in the Inspector."""
         self.inspector_panel.clear_camera_status()
+        self.inspector_panel.set_dslr_controls_enabled(False)
 
     def _on_no_camera_found(self) -> None:
         """Reflect a completed scan that found nothing, in the Inspector."""
         self.inspector_panel.clear_camera_status()
+        self.inspector_panel.set_dslr_controls_enabled(False)
 
     def closeEvent(self, event) -> None:
         """Shut all ten worker threads down cleanly before closing.
