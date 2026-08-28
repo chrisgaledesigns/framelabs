@@ -2,6 +2,7 @@
 
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QDialog
 
 from framelabs.core.config import Config
@@ -63,7 +64,19 @@ def main() -> None:
     elif startup_dialog.chosen_path is not None:
         window.open_project_at(startup_dialog.chosen_path)
 
+    # showMaximized() is deferred by one event-loop tick rather than
+    # called directly here. Calling it immediately -- on a window that
+    # has never been shown, right after the synchronous work above
+    # (open_created_project/open_project_at) -- is unreliable on some
+    # Linux window managers: the maximize request can get dropped or
+    # mishandled before the window has actually been mapped, silently
+    # falling back to MainWindow's plain resize(1280, 800) default
+    # instead of filling the screen. QTimer.singleShot(0, ...) runs
+    # showMaximized() on the next iteration of the event loop, after
+    # window.show() (called explicitly below) has had a chance to
+    # actually take effect -- the standard fix for this class of bug.
     window.show()
+    QTimer.singleShot(0, window.showMaximized)
     sys.exit(app.exec())
 
 
