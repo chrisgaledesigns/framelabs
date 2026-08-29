@@ -661,14 +661,14 @@
       </div>
       <div class="hero-meta">
         <span><span class="rec-dot"></span> Status verified via automated cross-check</span>
-        <span>HEAD <b class="mono">2ee5d2f</b></span>
+        <span>HEAD <b class="mono">529bbef</b></span>
         <span>Windows · macOS · Linux</span>
       </div>
     </div>
 
     <div class="stat-rail">
       <div class="stat"><div class="num">14</div><div class="lbl">Features in the spec, tracked one by one</div></div>
-      <div class="stat"><div class="num">669</div><div class="lbl">Automated tests passing right now</div></div>
+      <div class="stat"><div class="num">752</div><div class="lbl">Automated tests passing right now</div></div>
       <div class="stat"><div class="num">3</div><div class="lbl">Platforms: Windows, macOS, Linux</div></div>
       <div class="stat"><div class="num">GPL-3.0</div><div class="lbl">Free and open source, forever</div></div>
     </div>
@@ -762,8 +762,8 @@
           <text x="75" y="90" text-anchor="middle" font-family="Inter, Arial" font-size="10" fill="#8A93A6">BUILD</text>
         </svg>
         <div class="rt-body">
-          <h3>Phases 0–7 are closed, including the Blender bridge and Live Sync. Packaging and GitHub polish are next</h3>
-          <p>669 tests passing, 8 of 10 roadmap phases closed. Feature 10 (Blender Export) and Feature 11 (Live Blender Sync) are both confirmed working in an installed Blender.</p>
+          <h3>Phases 0–7 are closed, including the Blender bridge, Live Sync, and now a real DSLR backend. Packaging and GitHub polish are next</h3>
+          <p>752 tests passing, 8 of 10 roadmap phases closed. Feature 10 (Blender Export) and Feature 11 (Live Blender Sync) are both confirmed working in an installed Blender, and Feature 2 (Camera Manager) now tethers DSLRs over libgphoto2, not just webcams.</p>
           <div class="rt-track">
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div>
             <div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node done">✓</div><div class="rt-node mid">8</div><div class="rt-node">9</div>
@@ -812,7 +812,7 @@ cd framelabs
 pip install -e .
 framelabs
         </div>
-        <p class="dl-footnote">Requires Python 3.12+ and a webcam, DSLR, or libcamera-compatible camera. See the <a href="#docs" data-page="docs" style="color:var(--teal);">Docs</a> for camera backend setup, or watch packaging progress on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page.</p>
+        <p class="dl-footnote">Requires Python 3.12+ and a webcam or a tethered DSLR/mirrorless camera (via the optional <span class="mono">dslr</span> extra and libgphoto2). libcamera support is planned but not built yet. See the <a href="#docs" data-page="docs" style="color:var(--teal);">Docs</a> for camera backend setup, or watch packaging progress on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page.</p>
       </div>
     </div>
   </section>
@@ -836,7 +836,7 @@ framelabs
     <div class="how-it-works">
       <h3>Workflow</h3>
       <ol>
-        <li><b>Connect a camera:</b> FrameLabs detects webcams on startup (DSLR/libcamera support is planned, see Roadmap).</li>
+        <li><b>Connect a camera:</b> FrameLabs detects webcams and tethered DSLR/mirrorless cameras on startup (libcamera support is planned, see Roadmap).</li>
         <li><b>Capture a frame:</b> Press Space. The frame is verified, saved as PNG, thumbnailed, and added to the timeline in under a second.</li>
         <li><b>Review on set:</b> Onion skin, a histogram, and safe-area guides are available while shooting.</li>
         <li><b>Open in Blender:</b> One button saves the project, launches Blender, and builds the scene — camera, image sequence, compositor, and output settings.</li>
@@ -865,7 +865,7 @@ framelabs
       <div class="about-card">
         <span class="badge">Status</span>
         <h3>80% through the roadmap</h3>
-        <p>8 of 10 roadmap phases are closed. Phase 7 (the Blender bridge, including Live Sync) is done and confirmed working in real Blender, backed by 669 automated tests. See the Live Updates page for detail.</p>
+        <p>8 of 10 roadmap phases are closed. Phase 7 (the Blender bridge, including Live Sync) is done and confirmed working in real Blender, backed by 752 automated tests. All 14 Feature Spec items are now fully done, including DSLR camera support. See the Live Updates page for detail.</p>
       </div>
     </div>
 
@@ -934,8 +934,8 @@ framelabs
         </div>
 
         <div class="feature-card">
-          <div class="fc-top"><span class="fc-num mono">02</span><h3>Camera Manager</h3><span class="pill pill-mid">PARTIAL</span><span class="fc-chevron">▾</span></div>
-          <p class="fc-summary">Detects cameras on startup and handles hot-plugging and disconnects gracefully — but right now that's webcams only. DSLR (gphoto2) and libcamera backends aren't built yet.</p>
+          <div class="fc-top"><span class="fc-num mono">02</span><h3>Camera Manager</h3><span class="pill pill-done">DONE</span><span class="fc-chevron">▾</span></div>
+          <p class="fc-summary">Detects cameras on startup and handles hot-plugging and disconnects gracefully, across two real backends — webcams and tethered DSLR/mirrorless cameras via libgphoto2. libcamera is the one backend left unbuilt.</p>
           <div class="feature-detail">
             <span class="detail-label">Detect cameras</span>
             <div class="flow-box">No Camera<span class="arrow">→</span>Scanning...<span class="arrow">→</span>"Canon EOS R50 Connected"</div>
@@ -946,8 +946,11 @@ framelabs
             </ul>
             <span class="detail-label">Currently</span>
             <ul class="edge-list">
-              <li>Webcam backend is real and complete — connect/disconnect, capture, live view, hot-plug detection, "Camera Lost" reconnect/retry, all verified</li>
-              <li>DSLR (gphoto2) and libcamera backends don't exist yet — every backend implements the same Camera interface, so adding them won't touch the rest of the app</li>
+              <li>Webcam backend is real and complete — connect/disconnect, capture, live view, hot-plug detection, all verified</li>
+              <li>DSLR backend (<span class="mono">GphotoBackend</span>, via the optional <span class="mono">dslr</span> extra) is now real too — connect/disconnect over a gphoto2 port address, live view via <span class="mono">capture_preview()</span>, full-res capture, and genuine ISO/Shutter/Aperture config writes (not the webcam backend's no-ops), enabled in the Inspector once a DSLR is connected</li>
+              <li>A "Camera Lost" reconnect/retry dialog now covers both a disconnect mid-capture and mid-replace — no partial frame is ever written, and the project stays fully usable either way</li>
+              <li>libcamera backend still doesn't exist — every backend implements the same Camera interface, so adding it won't touch the rest of the app</li>
+              <li>White Balance and Focus stay disabled in the Inspector — no backend implements getters/setters for either yet</li>
             </ul>
           </div>
         </div>
@@ -1368,8 +1371,8 @@ framelabs
 
     <div class="ru-meta">
       <span>STATUS <b>Independent cross-check</b></span>
-      <span>HEAD <b>2ee5d2f</b></span>
-      <span>Last updated August 23, 2026</span>
+      <span>HEAD <b>529bbef</b></span>
+      <span>Last updated August 28, 2026</span>
     </div>
 
     <div class="ru-hero">
@@ -1384,9 +1387,9 @@ framelabs
       </div>
       <div class="ru-stat-rail">
         <div class="ru-stat"><div class="num">8<span style="color:var(--muted); font-size:16px;">/10</span></div><div class="lbl">Roadmap phases fully closed</div></div>
-        <div class="ru-stat"><div class="num">669</div><div class="lbl">Automated tests, all passing</div></div>
-        <div class="ru-stat"><div class="num">1</div><div class="lbl">Feature Spec item partial (Camera Manager)</div></div>
-        <div class="ru-stat"><div class="num">13<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
+        <div class="ru-stat"><div class="num">752<span style="color:var(--muted); font-size:16px;">/753</span></div><div class="lbl">Automated tests passing (1 stale assertion)</div></div>
+        <div class="ru-stat"><div class="num">2</div><div class="lbl">Camera backends now real (webcam + DSLR)</div></div>
+        <div class="ru-stat"><div class="num">14<span style="color:var(--muted); font-size:16px;">/14</span></div><div class="lbl">Feature Spec items fully done</div></div>
       </div>
     </div>
 
@@ -1426,9 +1429,9 @@ framelabs
       <div class="ru-phase-card"><div class="top"><span class="name">0 · Environment Setup</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">1 · Scaffold &amp; Packaging Config</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">2 · Core Infrastructure</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Logger, event bus, config — logger wired app-wide.</div><div class="ru-tag done">CLOSED</div></div>
-      <div class="ru-phase-card"><div class="top"><span class="name">3 · Camera Layer</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Interface + webcam backend + manager, now including live-view start/stop/read-frame support. Closed for alpha scope; DSLR backend deferred.</div><div class="ru-tag done">CLOSED (ALPHA)</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">3 · Camera Layer</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Interface + webcam backend + DSLR backend (libgphoto2) + manager, including live-view start/stop/read-frame support and real ISO/Shutter/Aperture config writes on DSLR. libcamera backend still not built.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">4 · Capture Pipeline</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Frame writer, metadata, capture service + Project/serializer/creator.</div><div class="ru-tag done">CLOSED</div></div>
-      <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, the real Timeline widget, and Delete/Replace/Duplicate/Marker/Notes — wired into a right-click menu, a selection action bar, and keyboard shortcuts, every action undoable — are all CLOSED and real. Keyboard shortcut configurability (Feature 12) is also now genuinely done, reading from Config rather than hardcoded. Export/Open in Blender remains, intentionally deferred to Phase 7's Blender bridge work, not left over from this phase.</div><div class="ru-tag done">CLOSED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, the real Timeline widget, and Delete/Replace/Duplicate/Marker/Notes — wired into a right-click menu, a selection action bar, and keyboard shortcuts, every action undoable — are all CLOSED and real. Keyboard shortcut configurability (Feature 12) is also now genuinely done, reading from Config rather than hardcoded. This session added a functional Project Settings dialog, restructured export into its own dedicated Export page, rebuilt the Theater View preview window, refreshed the splash screen and startup dialog with a real hero image, fixed the startup window not reliably maximizing on launch, and added a "Camera Lost" dialog for a disconnect mid-capture or mid-replace.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">6 · Timeline, Playback, Onion Skin</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Timeline data model, Onion Skin engine, and Playback controller all built, tested, and manually verified. <b style="color:var(--teal)">The shutdown crash that previously blocked Playback</b> (<span class="mono">RuntimeError: Signal source has been deleted</span>, when Onion Skin refreshed during Play) was root-caused and fixed — a `QThread.wait()` event-queue timing issue, not a logic bug. Safe areas and the histogram overlay (Feature 3) are now built and manually verified too, closing this phase out. This session: a real bug fix, not new scope — reaching the end of a non-looping sequence now resets the playhead to frame 1 instead of leaving it parked on the last frame.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">7 · Blender Bridge</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">The flagship feature — manifest generation, executable auto-detection, and the generated Blender-side script (camera, VSE import, compositor, a 50%-opacity reference background image, Output Settings, and Project Metadata) are all built and confirmed working end-to-end in a real installed Blender. The Reuse Existing Blender / Open New Instance prompt is wired in. Feature 11 (Live Blender Sync) is also built on top of this phase's foundation, ahead of its original v2 scoping — the generated scene script starts a sync listener automatically, and a dedicated worker thread pushes each capture straight into an already-open Blender scene.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">8 · Packaging to .exe</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">PyInstaller packaging for distribution.</div><div class="ru-tag not">NOT STARTED</div></div>
@@ -1441,7 +1444,7 @@ framelabs
     </div>
     <div class="ru-feat-grid">
       <div class="ru-feat"><span class="fnum">01</span><span class="fname">Project Management</span><span class="fstate done">DONE</span></div>
-      <div class="ru-feat"><span class="fnum">02</span><span class="fname">Camera Manager</span><span class="fstate mid">PARTIAL</span></div>
+      <div class="ru-feat"><span class="fnum">02</span><span class="fname">Camera Manager</span><span class="fstate done">DONE</span></div>
       <div class="ru-feat"><span class="fnum">03</span><span class="fname">Live View</span><span class="fstate done">DONE</span></div>
       <div class="ru-feat"><span class="fnum">04</span><span class="fname">Capture</span><span class="fstate done">DONE</span></div>
       <div class="ru-feat"><span class="fnum">05</span><span class="fname">Timeline</span><span class="fstate done">DONE</span></div>
@@ -1460,36 +1463,31 @@ framelabs
       <div>
         <div class="ru-section-head" style="margin-top:0;">
           <span class="ru-section-num">04</span><span class="ru-section-title">Test Suite Composition</span>
-          <span class="ru-section-sub">669 passing</span>
+          <span class="ru-section-sub">752 passing · top files by count</span>
         </div>
         <div class="ru-testchart">
-          <div class="ru-trow"><span class="tname">test_blender_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">28</span></div>
-          <div class="ru-trow"><span class="tname">test_timeline_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">28</span></div>
-          <div class="ru-trow"><span class="tname">test_blender_scene_builder.py</span><div class="tbar-wrap"><div class="tbar" style="width:86%"></div></div><span class="tval">24</span></div>
-          <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:96%"></div></div><span class="tval">27</span></div>
-          <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:89%"></div></div><span class="tval">25</span></div>
-          <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:86%"></div></div><span class="tval">24</span></div>
-          <div class="ru-trow"><span class="tname">test_project_browser_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:61%"></div></div><span class="tval">17</span></div>
-          <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:54%"></div></div><span class="tval">15</span></div>
-          <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:50%"></div></div><span class="tval">14</span></div>
-          <div class="ru-trow"><span class="tname">test_autosave.py</span><div class="tbar-wrap"><div class="tbar" style="width:46%"></div></div><span class="tval">13</span></div>
-          <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
-          <div class="ru-trow"><span class="tname">test_serializer.py</span><div class="tbar-wrap"><div class="tbar" style="width:43%"></div></div><span class="tval">12</span></div>
-          <div class="ru-trow"><span class="tname">test_undo_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_playback_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_frame_writer.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_config.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:36%"></div></div><span class="tval">10</span></div>
-          <div class="ru-trow"><span class="tname">test_plugin_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:32%"></div></div><span class="tval">9</span></div>
-          <div class="ru-trow"><span class="tname">test_theater_view_dialog.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_playback.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_metadata.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_histogram.py</span><div class="tbar-wrap"><div class="tbar" style="width:29%"></div></div><span class="tval">8</span></div>
-          <div class="ru-trow"><span class="tname">test_onion_skin.py</span><div class="tbar-wrap"><div class="tbar" style="width:21%"></div></div><span class="tval">6</span></div>
-          <div class="ru-trow"><span class="tname">test_commands.py</span><div class="tbar-wrap"><div class="tbar" style="width:21%"></div></div><span class="tval">6</span></div>
-          <div class="ru-trow"><span class="tname">test_onion_skin_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:18%"></div></div><span class="tval">5</span></div>
-          <div class="ru-trow"><span class="tname">test_project.py</span><div class="tbar-wrap"><div class="tbar" style="width:14%"></div></div><span class="tval">4</span></div>
-          <div class="ru-trow"><span class="tname">test_event_bus.py</span><div class="tbar-wrap"><div class="tbar" style="width:11%"></div></div><span class="tval">3</span></div>
+          <div class="ru-trow"><span class="tname">test_timeline_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">38</span></div>
+          <div class="ru-trow"><span class="tname">test_camera_manager.py</span><div class="tbar-wrap"><div class="tbar" style="width:100%"></div></div><span class="tval">38</span></div>
+          <div class="ru-trow"><span class="tname">test_capture_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:89%"></div></div><span class="tval">34</span></div>
+          <div class="ru-trow"><span class="tname">test_project_browser_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:79%"></div></div><span class="tval">30</span></div>
+          <div class="ru-trow"><span class="tname">test_blender_scene_builder.py</span><div class="tbar-wrap"><div class="tbar" style="width:79%"></div></div><span class="tval">30</span></div>
+          <div class="ru-trow"><span class="tname">test_capture_commands.py</span><div class="tbar-wrap"><div class="tbar" style="width:76%"></div></div><span class="tval">29</span></div>
+          <div class="ru-trow"><span class="tname">test_live_view_widget.py</span><div class="tbar-wrap"><div class="tbar" style="width:74%"></div></div><span class="tval">28</span></div>
+          <div class="ru-trow"><span class="tname">test_theater_view_dialog.py</span><div class="tbar-wrap"><div class="tbar" style="width:66%"></div></div><span class="tval">25</span></div>
+          <div class="ru-trow"><span class="tname">test_creator.py</span><div class="tbar-wrap"><div class="tbar" style="width:66%"></div></div><span class="tval">25</span></div>
+          <div class="ru-trow"><span class="tname">test_composition_guides.py</span><div class="tbar-wrap"><div class="tbar" style="width:66%"></div></div><span class="tval">25</span></div>
+          <div class="ru-trow"><span class="tname">test_export_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:58%"></div></div><span class="tval">22</span></div>
+          <div class="ru-trow"><span class="tname">test_gphoto_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:55%"></div></div><span class="tval">21</span></div>
+          <div class="ru-trow"><span class="tname">test_blender_launcher.py</span><div class="tbar-wrap"><div class="tbar" style="width:53%"></div></div><span class="tval">20</span></div>
+          <div class="ru-trow"><span class="tname">test_blender_exporter.py</span><div class="tbar-wrap"><div class="tbar" style="width:53%"></div></div><span class="tval">20</span></div>
+          <div class="ru-trow"><span class="tname">test_blender_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:47%"></div></div><span class="tval">18</span></div>
+          <div class="ru-trow"><span class="tname">test_camera_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:45%"></div></div><span class="tval">17</span></div>
+          <div class="ru-trow"><span class="tname">test_timeline.py</span><div class="tbar-wrap"><div class="tbar" style="width:39%"></div></div><span class="tval">15</span></div>
+          <div class="ru-trow"><span class="tname">test_inspector_panel.py</span><div class="tbar-wrap"><div class="tbar" style="width:39%"></div></div><span class="tval">15</span></div>
+          <div class="ru-trow"><span class="tname">test_live_view_controller.py</span><div class="tbar-wrap"><div class="tbar" style="width:37%"></div></div><span class="tval">14</span></div>
+          <div class="ru-trow"><span class="tname">test_autosave.py</span><div class="tbar-wrap"><div class="tbar" style="width:34%"></div></div><span class="tval">13</span></div>
+          <div class="ru-trow"><span class="tname">test_asset_service.py</span><div class="tbar-wrap"><div class="tbar" style="width:34%"></div></div><span class="tval">13</span></div>
+          <div class="ru-trow"><span class="tname">test_webcam_backend.py</span><div class="tbar-wrap"><div class="tbar" style="width:32%"></div></div><span class="tval">12</span></div>
         </div>
       </div>
 
@@ -1500,21 +1498,23 @@ framelabs
         </div>
         <div class="ru-testchart" style="padding:18px 20px;">
           <div class="ru-commit-list">
-            <div><span class="hash">2ee5d2f</span></div>
-            <div class="msg" style="margin-bottom:8px;">Merge Blender menu into Export; add Live Blender Sync (Feature 11)</div>
-            <div><span class="hash">a1e509b</span></div>
-            <div class="msg" style="margin-bottom:8px;">Onion skin: opacity-only, no color tint; move guides to their own menu</div>
-            <div><span class="hash">0dff8a2</span></div>
-            <div class="msg" style="margin-bottom:8px;">Added composition guides</div>
-            <div><span class="hash">a743703</span></div>
-            <div class="msg">Add export progress bar, export shortcut, and headless Export .blend</div>
+            <div><span class="hash">529bbef</span></div>
+            <div class="msg" style="margin-bottom:8px;">Camera disconnected dialog box — "Camera Lost" reconnect/retry now covers Replace too</div>
+            <div><span class="hash">35eae30</span></div>
+            <div class="msg" style="margin-bottom:8px;">DSLR cleanup — Inspector and CameraController wired to the new backend</div>
+            <div><span class="hash">485e3f5</span></div>
+            <div class="msg" style="margin-bottom:8px;">Add DSLR camera backend via libgphoto2 (gphoto2)</div>
+            <div><span class="hash">8db8d5f</span></div>
+            <div class="msg" style="margin-bottom:8px;">Fix startup window not reliably filling the screen</div>
+            <div><span class="hash">ff85cdc</span></div>
+            <div class="msg">Rebuilt missing Theater View preview window</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="ru-callout">
-      <b>Independent cross-check against the Feature Specification, Developer Handbook, and Project Vision docs: the repo was cloned fresh and the full test suite run (669/669 passing).</b> Feature 10 (Blender Export) is confirmed closed — the generated scene script builds the camera, VSE image sequence, compositor, a 50%-opacity camera background image, Output Settings (PNG render path under <span class="mono">exports/render/</span>), and Project Metadata (name, version, frame count stamped as custom scene properties), and saves the <span class="mono">.blend</span>. Feature 11 (Live Blender Sync) is also confirmed built: <span class="mono">blender/sync_client.py</span>, <span class="mono">sync_listener_script.py</span>, <span class="mono">sync_protocol.py</span>, and <span class="mono">ui/blender_sync_controller.py</span> exist, are tested, and are wired into the Export menu's "Live Blender Sync" toggle in <span class="mono">main_window.py</span> — this closes out Phase 7 in full. The one real gap found: <span class="mono">CameraInterface</span> still doesn't have every method the Developer Handbook and Feature Spec call for (no <span class="mono">set_white_balance()</span>), and there's no dedicated "Camera Lost" reconnect/retry modal for a disconnect that happens mid-capture — it currently just clears the Inspector's status silently. Everything else checked against the three docs (project management, capture pipeline, timeline, onion skin, playback, autosave, undo/redo, keyboard shortcuts, plugin isolation, logging) matches spec.
+      <b>Independent cross-check against the Feature Specification, Developer Handbook, and Project Vision docs: the repo was cloned fresh and the full test suite run (752/753 passing).</b> Since the last check, Feature 2 (Camera Manager) gained a real second backend — <span class="mono">GphotoBackend</span> tethers DSLR/mirrorless cameras over libgphoto2, with genuine ISO/Shutter/Aperture config writes (not the webcam backend's no-ops), gated behind an optional <span class="mono">dslr</span> extra so a webcam-only install never needs libgphoto2. A "Camera Lost" reconnect/retry dialog is now wired in for a disconnect mid-capture <i>and</i> mid-replace, closing the gap flagged in the previous check. Elsewhere: Export was restructured into its own dedicated page, the Theater View preview window was rebuilt, the splash screen and startup dialog got a real hero image, and a startup-window-not-maximizing bug was fixed. Feature 10 (Blender Export) and Feature 11 (Live Blender Sync) remain confirmed closed from the prior check. Real gaps still found: <span class="mono">CameraInterface</span> still has no <span class="mono">set_white_balance()</span>, per the Developer Handbook's required camera methods; the libcamera backend doesn't exist yet; one unit test (<span class="mono">test_branding.py::test_find_hero_image_returns_none_when_not_provided</span>) now fails because it asserts no hero image ships, which is stale given <span class="mono">StartupHero.png</span> was added on purpose — cosmetic, not a functional bug, but the test needs updating; and a handful of duplicate files (<span class="mono">config.py</span>, <span class="mono">main_window.py</span>, <span class="mono">theater_view_dialog.py</span>, matching test files, <span class="mono">camera_lost_files.tar.gz</span>, and two one-off patch scripts) sit at the repo root outside <span class="mono">src/</span> and <span class="mono">tests/</span>, apparently left behind by a patch-application step — they aren't part of the installed package but are worth a cleanup pass. Everything else checked against the three docs (project management, capture pipeline, timeline, onion skin, playback, autosave, undo/redo, keyboard shortcuts, plugin isolation, logging) still matches spec.
     </div>
 
     <div class="ru-two-col" style="margin-top:22px; margin-bottom:60px;">
@@ -1524,9 +1524,9 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean">
-          <li><b style="color:var(--text);">DSLR/gphoto2 camera backend (Feature 2)</b> — the single biggest remaining item. <span class="mono">CameraInterface</span> is designed for it and the webcam backend proves the pattern, but <span class="mono">gphoto_backend.py</span> and <span class="mono">libcamera_backend.py</span> don't exist yet, so ISO/Shutter/Aperture/White Balance/Focus stay disabled in the Inspector until it lands</li>
-          <li>A "Camera Lost" reconnect/retry modal for a disconnect that happens mid-capture (currently a silent status clear)</li>
-          <li>Phase 8 — .exe/.dmg/AppImage packaging via PyInstaller, so FrameLabs can be run without cloning the repo</li>
+          <li><b style="color:var(--text);">Phase 8 — .exe/.dmg/AppImage packaging via PyInstaller</b>, so FrameLabs can be run without cloning the repo — now the single biggest remaining item</li>
+          <li>Repo hygiene: remove the stray duplicate files at the repo root and update the one stale <span class="mono">test_branding.py</span> assertion</li>
+          <li><span class="mono">set_white_balance()</span> on <span class="mono">CameraInterface</span>, to unblock White Balance in the Inspector</li>
         </ul>
       </div>
       <div>
@@ -1535,10 +1535,9 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean muted">
-          <li>DSLR/gphoto2 and libcamera camera backends (Feature 2) — the only Feature Spec item not fully closed</li>
+          <li>libcamera camera backend (Feature 2's one remaining backend — webcam and DSLR are both real now)</li>
           <li><span class="mono">set_white_balance()</span> missing from <span class="mono">CameraInterface</span>, per the Developer Handbook's required camera methods</li>
-          <li>Camera presets, manual focus, and exposure preview (Project Vision V.01) — blocked on the DSLR backend above</li>
-          <li>"Camera Lost" reconnect/retry dialog for a mid-capture disconnect</li>
+          <li>Camera presets, manual focus, and exposure preview (Project Vision V.01) — Focus and White Balance still blocked; ISO/Shutter/Aperture are now live for DSLR</li>
           <li>.exe packaging (Phase 8) and GitHub/CONTRIBUTING polish (Phase 9)</li>
           <li>Stretch goals: Focus Peaking, Motion Detection, AI Cleanup, Frame Comparison, Network Companion, Multi-Camera Sync — none started, none currently scoped</li>
         </ul>
