@@ -225,3 +225,4 @@ manual_test_projects/
 *.patch
 Images/
 docs/
+installer_output/
