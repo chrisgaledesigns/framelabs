@@ -1,0 +1,10 @@
+FrameLabs — Alpha Build (v0.1.0-alpha)
+
+This is an early, pre-alpha version of FrameLabs. Expect missing
+features, rough edges, and possible bugs or crashes. Project files
+created now may not be compatible with future versions.
+
+Please report issues on GitHub:
+https://github.com/chrisgaledesigns/framelabs/issues
+
+Click Next to continue installing.

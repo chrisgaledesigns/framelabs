@@ -779,40 +779,40 @@
       <div class="download-panel">
         <div class="eyebrow">Get FrameLabs</div>
         <div class="head-row" style="margin-bottom:8px;">
-          <h2 style="margin-bottom:0;">Run it today, from source</h2>
+          <h2 style="margin-bottom:0;">Download FrameLabs</h2>
           <span class="pill pill-mid">PRE-ALPHA · MAIN BRANCH</span>
         </div>
-        <p class="section-sub" style="margin-bottom:26px;">Packaged installers are planned for Phase 8. Until then, running from source takes about two minutes on Windows, macOS, or Linux.</p>
+        <p class="section-sub" style="margin-bottom:26px;">A Windows installer is available now — macOS and Linux packages are next. Until those land, running from source takes about two minutes on either platform.</p>
 
         <div class="os-grid">
           <div class="os-card">
             <div class="os-icon">🪟</div>
             <div class="os-name">Windows</div>
-            <span class="os-note">Installer — Phase 8</span>
-            <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
+            <span class="os-note">Installer · v0.1.0-alpha</span>
+            <a class="btn btn-primary btn-sm" href="https://github.com/chrisgaledesigns/framelabs/releases/latest/download/FrameLabsSetup.exe">Download</a>
           </div>
           <div class="os-card">
             <div class="os-icon">🍎</div>
             <div class="os-name">macOS</div>
-            <span class="os-note">Installer — Phase 8</span>
+            <span class="os-note">Installer — in progress</span>
             <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
           </div>
           <div class="os-card">
             <div class="os-icon">🐧</div>
             <div class="os-name">Linux</div>
-            <span class="os-note">Installer — Phase 8</span>
+            <span class="os-note">Installer — in progress</span>
             <button class="btn btn-outline btn-sm" disabled>Coming soon</button>
           </div>
         </div>
 
         <div class="code-block">
-<span class="c-muted"># clone and run — Python 3.12+</span>
+<span class="c-muted"># or run from source — Python 3.12+</span>
 git clone https://github.com/chrisgaledesigns/framelabs.git
 cd framelabs
 pip install -e .
 framelabs
         </div>
-        <p class="dl-footnote">Requires Python 3.12+ and a webcam or a tethered DSLR/mirrorless camera (via the optional <span class="mono">dslr</span> extra and libgphoto2). libcamera support is planned but not built yet. See the <a href="#docs" data-page="docs" style="color:var(--teal);">Docs</a> for camera backend setup, or watch packaging progress on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page.</p>
+        <p class="dl-footnote">The Windows installer requires no Python install. Requires a webcam or a tethered DSLR/mirrorless camera (via the optional <span class="mono">dslr</span> extra and libgphoto2). libcamera support is planned but not built yet. See the <a href="#docs" data-page="docs" style="color:var(--teal);">Docs</a> for camera backend setup, or watch packaging progress on the <a href="#updates" data-page="updates" style="color:var(--teal);">Live Updates</a> page.</p>
       </div>
     </div>
   </section>
@@ -1410,8 +1410,8 @@ framelabs
           <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">5<br>UI shell</div></div>
           <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">6<br>Timeline &amp; onion skin</div></div>
           <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">7<br>Blender bridge</div></div>
-          <div class="ru-node"><div class="ru-dot mid">8</div><div class="n">.exe packaging</div></div>
-          <div class="ru-node"><div class="ru-dot">9</div><div class="n">GitHub polish</div></div>
+          <div class="ru-node"><div class="ru-dot done">✓</div><div class="n">8<br>.exe packaging</div></div>
+          <div class="ru-node"><div class="ru-dot mid">9</div><div class="n">GitHub polish</div></div>
         </div>
       </div>
       <div class="ru-legend">
@@ -1434,7 +1434,7 @@ framelabs
       <div class="ru-phase-card"><div class="top"><span class="name">5 · UI Shell (PySide6)</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">New Project, Camera Connection, Capture, Save/Open Project, Play, Onion Skin toggling, the real Timeline widget, and Delete/Replace/Duplicate/Marker/Notes — wired into a right-click menu, a selection action bar, and keyboard shortcuts, every action undoable — are all CLOSED and real. Keyboard shortcut configurability (Feature 12) is also now genuinely done, reading from Config rather than hardcoded. This session added a functional Project Settings dialog, restructured export into its own dedicated Export page, rebuilt the Theater View preview window, refreshed the splash screen and startup dialog with a real hero image, fixed the startup window not reliably maximizing on launch, and added a "Camera Lost" dialog for a disconnect mid-capture or mid-replace.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">6 · Timeline, Playback, Onion Skin</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">Timeline data model, Onion Skin engine, and Playback controller all built, tested, and manually verified. <b style="color:var(--teal)">The shutdown crash that previously blocked Playback</b> (<span class="mono">RuntimeError: Signal source has been deleted</span>, when Onion Skin refreshed during Play) was root-caused and fixed — a `QThread.wait()` event-queue timing issue, not a logic bug. Safe areas and the histogram overlay (Feature 3) are now built and manually verified too, closing this phase out. This session: a real bug fix, not new scope — reaching the end of a non-looping sequence now resets the playhead to frame 1 instead of leaving it parked on the last frame.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">7 · Blender Bridge</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">The flagship feature — manifest generation, executable auto-detection, and the generated Blender-side script (camera, VSE import, compositor, a 50%-opacity reference background image, Output Settings, and Project Metadata) are all built and confirmed working end-to-end in a real installed Blender. The Reuse Existing Blender / Open New Instance prompt is wired in. Feature 11 (Live Blender Sync) is also built on top of this phase's foundation, ahead of its original v2 scoping — the generated scene script starts a sync listener automatically, and a dedicated worker thread pushes each capture straight into an already-open Blender scene.</div><div class="ru-tag done">CLOSED</div></div>
-      <div class="ru-phase-card"><div class="top"><span class="name">8 · Packaging to .exe</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">PyInstaller packaging for distribution.</div><div class="ru-tag not">NOT STARTED</div></div>
+      <div class="ru-phase-card"><div class="top"><span class="name">8 · Packaging to .exe</span><span class="pct">100%</span></div><div class="ru-bar"><div class="ru-bar-fill" style="width:100%"></div></div><div class="note">PyInstaller onedir build wrapped in an Inno Setup installer — choose install location, optional desktop shortcut and taskbar pin, uninstaller registered in Add/Remove Programs. Windows build confirmed working. macOS (.dmg) and Linux (AppImage) packaging still to do.</div><div class="ru-tag done">CLOSED</div></div>
       <div class="ru-phase-card"><div class="top"><span class="name">9 · GitHub Polish</span><span class="pct">0%</span></div><div class="ru-bar"><div class="ru-bar-fill zero" style="width:3px"></div></div><div class="note">CONTRIBUTING.md, CI, issue templates.</div><div class="ru-tag not">NOT STARTED</div></div>
     </div>
 
@@ -1524,7 +1524,7 @@ framelabs
           <span class="ru-section-sub"></span>
         </div>
         <ul class="ru-clean">
-          <li><b style="color:var(--text);">Phase 8 — .exe/.dmg/AppImage packaging via PyInstaller</b>, so FrameLabs can be run without cloning the repo — now the single biggest remaining item</li>
+          <li><b style="color:var(--text);">macOS (.dmg) and Linux (AppImage) packaging</b> — Windows installer is done via PyInstaller + Inno Setup; the other two platforms are next</li>
           <li>Repo hygiene: remove the stray duplicate files at the repo root and update the one stale <span class="mono">test_branding.py</span> assertion</li>
           <li><span class="mono">set_white_balance()</span> on <span class="mono">CameraInterface</span>, to unblock White Balance in the Inspector</li>
         </ul>
@@ -1538,7 +1538,7 @@ framelabs
           <li>libcamera camera backend (Feature 2's one remaining backend — webcam and DSLR are both real now)</li>
           <li><span class="mono">set_white_balance()</span> missing from <span class="mono">CameraInterface</span>, per the Developer Handbook's required camera methods</li>
           <li>Camera presets, manual focus, and exposure preview (Project Vision V.01) — Focus and White Balance still blocked; ISO/Shutter/Aperture are now live for DSLR</li>
-          <li>.exe packaging (Phase 8) and GitHub/CONTRIBUTING polish (Phase 9)</li>
+          <li>macOS/Linux packaging (rest of Phase 8) and GitHub/CONTRIBUTING polish (Phase 9)</li>
           <li>Stretch goals: Focus Peaking, Motion Detection, AI Cleanup, Frame Comparison, Network Companion, Multi-Camera Sync — none started, none currently scoped</li>
         </ul>
       </div>
