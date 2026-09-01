@@ -52,20 +52,149 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent, QKeyEvent, QPixmap, QResizeEvent
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
+from PySide6.QtGui import (
+    QCloseEvent,
+    QKeyEvent,
+    QMouseEvent,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QSlider,
+    QStyle,
+    QStyleOptionSlider,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
 from framelabs.project.project import Frame
 from framelabs.ui.timecode_widget import format_timecode
+
+
+class _SeekSlider(QSlider):
+    """Horizontal QSlider that jumps straight to wherever it's clicked,
+    instead of stock QSlider's default of paging one step toward the
+    click -- and shows a "Frame N  HH:MM:SS:FF" tooltip under the cursor
+    while hovering or dragging, so a click always lands on the frame the
+    tooltip just promised.
+
+    Plain QSlider only warps its handle to the exact click position when
+    you grab the handle itself and drag it; clicking anywhere else on the
+    groove just pages toward that point one step at a time, which from a
+    user's chair looks like "the scrub bar doesn't let me jump into the
+    middle of the timeline" -- exactly the gap this subclass closes for
+    TheaterViewDialog's scrub bar. Reports position the same way a real
+    drag already does (via the inherited sliderMoved signal), so
+    TheaterViewDialog's existing _on_scrub_bar_moved() wiring below needs
+    no changes to benefit from this.
+    """
+
+    def __init__(
+        self, tooltip_formatter, parent: QWidget | None = None
+    ) -> None:
+        """`tooltip_formatter` maps a frame index to the tooltip string to
+        show for it (or a falsy value to show nothing) -- kept as an
+        injected callback rather than this class reaching into
+        TheaterViewDialog's frame list directly, so this slider stays a
+        generic, dialog-agnostic widget.
+        """
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self._tooltip_formatter = tooltip_formatter
+        # Needed so mouseMoveEvent fires on plain hovering, not just while
+        # a button is held down -- that's what makes the tooltip preview
+        # available *before* the user commits to a click.
+        self.setMouseTracking(True)
+
+    def _value_at_x(self, x: int) -> int:
+        """Map a click/hover x-coordinate to the frame index under it,
+        accounting for the handle's own width the same way Qt's internal
+        paging logic does (QStyle.sliderValueFromPosition), so the frame
+        that ends up selected is the one actually under the cursor rather
+        than off by the handle's radius.
+        """
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        groove = self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            option,
+            QStyle.SubControl.SC_SliderGroove,
+            self,
+        )
+        handle = self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            option,
+            QStyle.SubControl.SC_SliderHandle,
+            self,
+        )
+        slider_length = handle.width()
+        slider_min = groove.x()
+        slider_max = groove.right() - slider_length + 1
+        return QStyle.sliderValueFromPosition(
+            self.minimum(),
+            self.maximum(),
+            x - slider_min - slider_length // 2,
+            slider_max - slider_min,
+        )
+
+    def _show_tooltip_for(self, value: int, global_pos: QPoint) -> None:
+        text = self._tooltip_formatter(value)
+        if text:
+            QToolTip.showText(global_pos, text, self)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Left-click anywhere on the groove: jump straight to that
+        frame, exactly as if the user had dragged the handle there.
+
+        setSliderDown(True) puts the slider into the same "currently
+        being dragged" state a real handle-grab would, so a
+        mouseMoveEvent immediately after this (the user keeps holding the
+        button and drags) continues smoothly from the clicked position
+        rather than jumping again relative to the handle's old spot.
+        Any other button (e.g. right-click) falls back to Qt's own
+        default handling.
+        """
+        if event.button() != Qt.MouseButton.LeftButton or not self.isEnabled():
+            super().mousePressEvent(event)
+            return
+        value = self._value_at_x(int(event.position().x()))
+        self.setSliderDown(True)
+        self.setValue(value)
+        self.sliderMoved.emit(value)
+        self._show_tooltip_for(value, event.globalPosition().toPoint())
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """While dragging: keep following the cursor (stock QSlider
+        behavior, preserved via super()). While merely hovering: preview
+        the frame under the cursor via tooltip without moving the handle
+        or touching TheaterViewDialog's `_index` -- a hover is not a
+        commitment the way a click is.
+        """
+        if self.isSliderDown():
+            super().mouseMoveEvent(event)
+            self._show_tooltip_for(
+                self.value(), event.globalPosition().toPoint()
+            )
+            return
+        if self.isEnabled():
+            hovered_value = self._value_at_x(int(event.position().x()))
+            self._show_tooltip_for(
+                hovered_value, event.globalPosition().toPoint()
+            )
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        """Hide any hover tooltip left showing once the cursor leaves the
+        bar entirely, so it doesn't linger over unrelated widgets.
+        """
+        QToolTip.hideText()
+        super().leaveEvent(event)
 
 # A deliberately near-black (not pure #000) backdrop, so a fully black
 # source frame still reads as distinct from the surrounding dialog --
@@ -175,17 +304,24 @@ class TheaterViewDialog(QDialog):
         top_bar_layout.addWidget(self._position_label, 1)
         top_bar_layout.addWidget(close_button)
 
-        # Scrub bar: one tick per frame, so dragging it lands exactly on a
-        # frame boundary rather than some fractional position with nothing
-        # to show -- there's no "in-between" state for a sequence of still
-        # images the way there is for video. sliderMoved (not
-        # valueChanged) drives navigation, since valueChanged also fires
-        # for the programmatic setValue() calls _sync_scrub_bar() makes
-        # after a Left/Right key press or the initial start_index -- using
-        # sliderMoved keeps those two update paths (keyboard -> slider,
-        # slider -> keyboard-equivalent) from feeding back into each
-        # other.
-        self._scrub_bar = QSlider(Qt.Orientation.Horizontal)
+        # Scrub bar: one tick per frame, so dragging (or now, clicking)
+        # it lands exactly on a frame boundary rather than some
+        # fractional position with nothing to show -- there's no
+        # "in-between" state for a sequence of still images the way
+        # there is for video. sliderMoved (not valueChanged) drives
+        # navigation, since valueChanged also fires for the programmatic
+        # setValue() calls _sync_scrub_bar() makes after a Left/Right key
+        # press or the initial start_index -- using sliderMoved keeps
+        # those two update paths (keyboard -> slider, slider ->
+        # keyboard-equivalent) from feeding back into each other.
+        #
+        # _SeekSlider (not a plain QSlider) so a click anywhere on the
+        # bar jumps straight to that frame instead of paging one step
+        # toward it -- see that class's docstring for why plain QSlider
+        # doesn't already do this -- and so hovering previews the frame
+        # under the cursor via a "Frame N  timecode" tooltip before the
+        # user commits to a click.
+        self._scrub_bar = _SeekSlider(self._scrub_bar_tooltip_text)
         self._scrub_bar.setMinimum(0)
         self._scrub_bar.setMaximum(max(0, len(self._frames) - 1))
         self._scrub_bar.setEnabled(bool(self._frames))
@@ -309,6 +445,23 @@ class TheaterViewDialog(QDialog):
         each other.
         """
         self._scrub_bar.setValue(self._index)
+
+    def _scrub_bar_tooltip_text(self, index: int) -> str:
+        """Format the "Frame N  HH:MM:SS:FF" tooltip _SeekSlider shows
+        while hovering/dragging over `index`.
+
+        Passed into _SeekSlider as a callback (see its __init__ docstring
+        for why) rather than that class reaching into `_frames`/`_fps`
+        directly. Returns "" for an out-of-range index (e.g. the slider
+        is disabled with zero frames, or a hover lands a pixel past the
+        last valid position) so _SeekSlider's "falsy means show nothing"
+        contract is satisfied instead of raising or showing a bogus
+        frame.
+        """
+        if not self._frames or not (0 <= index < len(self._frames)):
+            return ""
+        frame = self._frames[index]
+        return f"Frame {frame.number}  {format_timecode(index, self._fps)}"
 
     def _rescale_current_pixmap(self) -> None:
         """Re-scale the currently loaded pixmap to fit the image label.

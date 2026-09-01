@@ -17,11 +17,37 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from framelabs.project.project import Frame
 from framelabs.ui.theater_view_dialog import TheaterViewDialog
+
+
+def _click_scrub_bar_at_value(dialog: TheaterViewDialog, value: int) -> None:
+    """Simulate a real left-click landing on the scrub bar position that
+    corresponds to `value`, exercising _SeekSlider's actual
+    mousePressEvent/_value_at_x math end-to-end rather than emitting
+    sliderMoved directly (that's what the drag-only tests above already
+    do) -- this is what proves clicking, not just dragging, seeks.
+    """
+    scrub_bar = dialog._scrub_bar
+    scrub_bar.resize(300, scrub_bar.sizeHint().height() or 20)
+    # Invert _value_at_x's own mapping to find an x that resolves back to
+    # `value`, rather than hard-coding a width-dependent pixel offset.
+    target_x = next(
+        x for x in range(scrub_bar.width()) if scrub_bar._value_at_x(x) == value
+    )
+    pos = QPointF(target_x, scrub_bar.height() / 2)
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        pos,
+        pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    scrub_bar.mousePressEvent(event)
 
 
 def _write_real_image(project_path: Path, frame_number: int) -> None:
@@ -375,3 +401,82 @@ def test_closing_dialog_stops_the_timer(qtbot, tmp_path):
     dialog.close()
 
     assert not dialog._timer.isActive()
+
+
+def test_clicking_the_scrub_bar_seeks_directly_to_that_frame(qtbot, tmp_path):
+    """The bug report this covers: previously, clicking a point on the
+    scrub bar (as opposed to dragging the handle) did not seek there at
+    all -- plain QSlider just pages one step toward the click. A single
+    click landing exactly on the target frame is the fix.
+    """
+    frames = _make_frames(tmp_path, 5)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    _click_scrub_bar_at_value(dialog, 3)
+
+    assert dialog._index == 3
+    assert "Frame 4" in dialog._position_label.text()
+
+
+def test_clicking_the_scrub_bar_while_playing_pauses_first(qtbot, tmp_path):
+    frames = _make_frames(tmp_path, 5)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog._play_button.setChecked(True)
+
+    _click_scrub_bar_at_value(dialog, 2)
+
+    assert not dialog._timer.isActive()
+    assert not dialog._play_button.isChecked()
+    assert dialog._index == 2
+
+
+def test_clicking_disabled_scrub_bar_does_not_seek(qtbot, tmp_path):
+    dialog = TheaterViewDialog(tmp_path, [], start_index=0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    scrub_bar = dialog._scrub_bar
+    scrub_bar.resize(300, scrub_bar.sizeHint().height() or 20)
+    pos = QPointF(150, scrub_bar.height() / 2)
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        pos,
+        pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    scrub_bar.mousePressEvent(event)
+
+    assert dialog._index == 0
+
+
+def test_scrub_bar_tooltip_text_reports_frame_and_timecode(qtbot, tmp_path):
+    frames = _make_frames(tmp_path, 3)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0, fps=2)
+    qtbot.addWidget(dialog)
+
+    text = dialog._scrub_bar_tooltip_text(1)
+
+    assert "Frame 2" in text
+    assert "00:00:00:01" in text
+
+
+def test_scrub_bar_tooltip_text_empty_for_out_of_range_index(qtbot, tmp_path):
+    frames = _make_frames(tmp_path, 3)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0)
+    qtbot.addWidget(dialog)
+
+    assert dialog._scrub_bar_tooltip_text(-1) == ""
+    assert dialog._scrub_bar_tooltip_text(99) == ""
+
+
+def test_scrub_bar_tooltip_text_empty_with_no_frames(qtbot, tmp_path):
+    dialog = TheaterViewDialog(tmp_path, [], start_index=0)
+    qtbot.addWidget(dialog)
+
+    assert dialog._scrub_bar_tooltip_text(0) == ""
