@@ -106,6 +106,15 @@ class _SeekSlider(QSlider):
         """
         super().__init__(Qt.Orientation.Horizontal, parent)
         self._tooltip_formatter = tooltip_formatter
+        # Tracks the last frame index the tooltip was shown for, so
+        # _maybe_show_tooltip() only re-issues QToolTip.showText() when
+        # that index actually changes. setMouseTracking(True) below
+        # delivers a mouseMoveEvent for every single pixel the cursor
+        # crosses -- calling showText() unconditionally on every one of
+        # those (the first version of this class did) reissues the
+        # tooltip dozens of times a second even for near-stationary
+        # movement, which reads as the tooltip flashing/flickering.
+        self._last_tooltip_value: int | None = None
         # Needed so mouseMoveEvent fires on plain hovering, not just while
         # a button is held down -- that's what makes the tooltip preview
         # available *before* the user commits to a click.
@@ -142,58 +151,79 @@ class _SeekSlider(QSlider):
             slider_max - slider_min,
         )
 
-    def _show_tooltip_for(self, value: int, global_pos: QPoint) -> None:
+    def _maybe_show_tooltip(self, value: int, global_pos: QPoint) -> None:
+        """Show the tooltip for `value`, but only if it's different from
+        the last one shown -- see `_last_tooltip_value`'s docstring for
+        why re-issuing on every pixel of movement is what caused the
+        flashing/flickering.
+        """
+        if value == self._last_tooltip_value:
+            return
+        self._last_tooltip_value = value
         text = self._tooltip_formatter(value)
         if text:
             QToolTip.showText(global_pos, text, self)
+        else:
+            QToolTip.hideText()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Left-click anywhere on the groove: jump straight to that
-        frame, exactly as if the user had dragged the handle there.
+        frame, then hand off to QSlider's own stock press handling via
+        super() -- deliberately NOT reimplemented from scratch.
 
-        setSliderDown(True) puts the slider into the same "currently
-        being dragged" state a real handle-grab would, so a
-        mouseMoveEvent immediately after this (the user keeps holding the
-        button and drags) continues smoothly from the clicked position
-        rather than jumping again relative to the handle's old spot.
-        Any other button (e.g. right-click) falls back to Qt's own
-        default handling.
+        Setting the value first moves the handle to sit exactly under
+        the click, so when super().mousePressEvent() runs its own
+        hit-test immediately after, it finds the click landing on the
+        handle and treats this as a normal handle-grab (anchoring for a
+        possible drag) rather than fighting the jump with its own
+        page-step-towards-click logic.
+
+        Calling super() here -- rather than this class managing
+        isSliderDown()/pressed state by hand, as an earlier version of
+        this method did -- matters for a reason that isn't obvious from
+        the press side alone: QSlider's stock mouseReleaseEvent only
+        clears the "pressed" state if QSlider's OWN mousePressEvent set
+        up its internal pressedControl bookkeeping first. Skipping
+        super() here left that bookkeeping never set, so the inherited
+        release handler had nothing to clear -- the slider stayed
+        "pressed" forever after the very first click. With the slider
+        stuck pressed, every later setValue() call from
+        TheaterViewDialog._sync_scrub_bar() (which runs on every
+        playback tick) started being treated like an interactive drag
+        update and re-emitted sliderMoved, which
+        TheaterViewDialog._on_scrub_bar_moved() responds to by pausing
+        playback -- so Play would advance exactly one frame and then
+        self-pause, on every play after the first click. Always
+        deferring to super() for the actual press/drag/release state
+        machine avoids re-introducing that.
         """
-        if event.button() != Qt.MouseButton.LeftButton or not self.isEnabled():
-            super().mousePressEvent(event)
-            return
-        value = self._value_at_x(int(event.position().x()))
-        self.setSliderDown(True)
-        self.setValue(value)
-        self.sliderMoved.emit(value)
-        self._show_tooltip_for(value, event.globalPosition().toPoint())
-        event.accept()
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
+            value = self._value_at_x(int(event.position().x()))
+            self.setValue(value)
+            self.sliderMoved.emit(value)
+            self._maybe_show_tooltip(value, event.globalPosition().toPoint())
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """While dragging: keep following the cursor (stock QSlider
-        behavior, preserved via super()). While merely hovering: preview
-        the frame under the cursor via tooltip without moving the handle
-        or touching TheaterViewDialog's `_index` -- a hover is not a
-        commitment the way a click is.
+        """Preview the frame under the cursor via tooltip, both while
+        merely hovering and while actively dragging. The seek itself
+        during an active drag is entirely QSlider's own stock behavior
+        (it already emits sliderMoved as the drag proceeds) -- this
+        method only adds the tooltip on top via super(), never a second,
+        competing seek.
         """
-        if self.isSliderDown():
-            super().mouseMoveEvent(event)
-            self._show_tooltip_for(
-                self.value(), event.globalPosition().toPoint()
-            )
-            return
         if self.isEnabled():
-            hovered_value = self._value_at_x(int(event.position().x()))
-            self._show_tooltip_for(
-                hovered_value, event.globalPosition().toPoint()
-            )
+            value = self._value_at_x(int(event.position().x()))
+            self._maybe_show_tooltip(value, event.globalPosition().toPoint())
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         """Hide any hover tooltip left showing once the cursor leaves the
-        bar entirely, so it doesn't linger over unrelated widgets.
+        bar entirely, so it doesn't linger over unrelated widgets, and
+        forget the last shown value so re-entering shows fresh.
         """
         QToolTip.hideText()
+        self._last_tooltip_value = None
         super().leaveEvent(event)
 
 # A deliberately near-black (not pure #000) backdrop, so a fully black

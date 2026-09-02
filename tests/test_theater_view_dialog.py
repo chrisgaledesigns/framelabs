@@ -480,3 +480,76 @@ def test_scrub_bar_tooltip_text_empty_with_no_frames(qtbot, tmp_path):
     qtbot.addWidget(dialog)
 
     assert dialog._scrub_bar_tooltip_text(0) == ""
+
+
+def test_clicking_scrub_bar_then_playing_does_not_self_pause(qtbot, tmp_path):
+    """Regression test for a real bug: an earlier version of the click-
+    to-seek fix left the scrub bar permanently stuck in Qt's internal
+    "pressed" state after a single real click (as opposed to the
+    sliderMoved.emit() shortcut the other tests here use), because it
+    managed that state by hand instead of deferring to QSlider's own
+    press/release machinery. Once stuck "pressed", _sync_scrub_bar()'s
+    routine setValue() call on every playback tick started re-emitting
+    sliderMoved -- which _on_scrub_bar_moved() responds to by pausing --
+    so Play would advance exactly one frame and immediately stop, on
+    every play after the first click. A real click (not the shortcut)
+    followed by two ticks that land mid-sequence (not the last frame)
+    must leave the timer running both times.
+    """
+    frames = _make_frames(tmp_path, 6)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    _click_scrub_bar_at_value(dialog, 1)
+    assert dialog._index == 1
+
+    dialog._play_button.setChecked(True)
+    assert dialog._timer.isActive()
+
+    dialog._advance_playback()
+    assert dialog._index == 2
+    assert dialog._timer.isActive(), "Play self-paused after one tick"
+
+    dialog._advance_playback()
+    assert dialog._index == 3
+    assert dialog._timer.isActive(), "Play self-paused after a second tick"
+
+
+def test_click_does_not_leave_slider_permanently_pressed(qtbot, tmp_path):
+    """A real click should behave like a normal, momentary press: once
+    Qt's own release handling runs, isSliderDown() must go back to
+    False, not stay stuck True forever (see the regression test above
+    for what stayed-stuck previously broke).
+    """
+    frames = _make_frames(tmp_path, 5)
+    dialog = TheaterViewDialog(tmp_path, frames, start_index=0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    scrub_bar = dialog._scrub_bar
+    scrub_bar.resize(300, scrub_bar.sizeHint().height() or 20)
+    target_x = next(
+        x for x in range(scrub_bar.width()) if scrub_bar._value_at_x(x) == 2
+    )
+    pos = QPointF(target_x, scrub_bar.height() / 2)
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        pos,
+        pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    scrub_bar.mousePressEvent(press)
+    release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        pos,
+        pos,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    scrub_bar.mouseReleaseEvent(release)
+
+    assert not scrub_bar.isSliderDown()
