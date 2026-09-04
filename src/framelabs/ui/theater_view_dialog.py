@@ -95,9 +95,7 @@ class _SeekSlider(QSlider):
     no changes to benefit from this.
     """
 
-    def __init__(
-        self, tooltip_formatter, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, tooltip_formatter, parent: QWidget | None = None) -> None:
         """`tooltip_formatter` maps a frame index to the tooltip string to
         show for it (or a falsy value to show nothing) -- kept as an
         injected callback rather than this class reaching into
@@ -225,6 +223,7 @@ class _SeekSlider(QSlider):
         QToolTip.hideText()
         self._last_tooltip_value = None
         super().leaveEvent(event)
+
 
 # A deliberately near-black (not pure #000) backdrop, so a fully black
 # source frame still reads as distinct from the surrounding dialog --

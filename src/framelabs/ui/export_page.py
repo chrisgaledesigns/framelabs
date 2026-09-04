@@ -192,7 +192,9 @@ class ExportPage(QWidget):
         without a dialog button box to drive."""
         self.codec_combo.setEnabled(self.video_check.isChecked())
         self.gif_fps_spin.setEnabled(self.gif_check.isChecked())
-        self.export_button.setEnabled(self._project is not None and self._any_format_checked())
+        self.export_button.setEnabled(
+            self._project is not None and self._any_format_checked()
+        )
 
     def _any_format_checked(self) -> bool:
         return (
@@ -234,12 +236,16 @@ class ExportPage(QWidget):
             if project.frames and project.project_path is not None
             else None
         )
-        pixmap = QPixmap(str(thumbnail_path)) if thumbnail_path is not None else QPixmap()
+        pixmap = (
+            QPixmap(str(thumbnail_path)) if thumbnail_path is not None else QPixmap()
+        )
 
         if pixmap.isNull():
             self.preview_label.setPixmap(QPixmap())
             self.preview_label.setText(
-                "No frames captured yet" if not project.frames else "Preview unavailable"
+                "No frames captured yet"
+                if not project.frames
+                else "Preview unavailable"
             )
         else:
             self.preview_label.setText("")

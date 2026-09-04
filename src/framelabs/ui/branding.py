@@ -58,7 +58,7 @@ def find_hero_image() -> Path | None:
 
 
 def current_version_text() -> str:
-    """"version X.Y.Z" from the installed package, or "" if unresolvable.
+    """ "version X.Y.Z" from the installed package, or "" if unresolvable.
 
     Reads the real installed version rather than hardcoding a number
     that would silently go stale after the next release. Shared by

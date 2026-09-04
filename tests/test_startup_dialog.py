@@ -74,7 +74,6 @@ def test_recent_list_height_hugs_a_couple_of_entries(qtbot, tmp_path):
     block below it -- its fixed height should scale with actual row
     count (up to MAX_VISIBLE_RECENT_ROWS), not sit at some unrelated
     minimum regardless of how few entries there are."""
-    import framelabs.ui.startup_dialog as startup_dialog_module
 
     config = _make_config(tmp_path)
     for name in ("fish", "Test Project 8-23-26"):

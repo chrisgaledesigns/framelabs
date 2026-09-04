@@ -19,10 +19,14 @@ def test_branded_pixmap_is_not_null(qtbot):
     assert not pixmap.isNull()
 
 
-def test_find_hero_image_returns_none_when_not_provided(qtbot):
-    """No hero photo ships with this repo, so until the user drops one
-    into resources/, this should resolve to None rather than error."""
-    assert find_hero_image() is None
+def test_find_hero_image_finds_shipped_startup_hero(qtbot):
+    """StartupHero.png now ships in resources/ (added with the splash
+    screen work), so find_hero_image() should resolve to a real,
+    existing path rather than None."""
+    result = find_hero_image()
+    assert result is not None
+    assert result.exists()
+    assert result.name == "StartupHero.png"
 
 
 def test_hero_banner_pixmap_has_requested_size_without_an_image(qtbot):

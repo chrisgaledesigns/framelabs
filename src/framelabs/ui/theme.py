@@ -7,18 +7,18 @@ their own hex values.
 """
 
 # --- Palette -----------------------------------------------------------
-BG_WINDOW = "#0d1821"       # app chrome: menu bar, side panels, bottom bar
-BG_CANVAS = "#05090c"       # the live-view / capture surface, darkest area
-BG_PANEL = "#141f2a"        # cards, inputs, thumbnails, list rows
+BG_WINDOW = "#0d1821"  # app chrome: menu bar, side panels, bottom bar
+BG_CANVAS = "#05090c"  # the live-view / capture surface, darkest area
+BG_PANEL = "#141f2a"  # cards, inputs, thumbnails, list rows
 BG_PANEL_RAISED = "#182531"  # slightly lighter cards (footer bars, headers)
 BG_PANEL_HOVER = "#1e2c39"
 BORDER = "#22323f"
 BORDER_SOFT = "#182530"
-ACCENT = "#00bc90"          # selection border, active states, highlights
-ACCENT_DIM = "#0a3d31"       # accent at low opacity feel, for subtle fills
-ACCENT_YELLOW = "#ffe800"    # logo's "LABS" wordmark yellow -- used sparingly
-                              # on pre-launch screens (e.g. version badge)
-                              # over the hero photo, never in-app chrome.
+ACCENT = "#00bc90"  # selection border, active states, highlights
+ACCENT_DIM = "#0a3d31"  # accent at low opacity feel, for subtle fills
+ACCENT_YELLOW = "#ffe800"  # logo's "LABS" wordmark yellow -- used sparingly
+# on pre-launch screens (e.g. version badge)
+# over the hero photo, never in-app chrome.
 TEXT_PRIMARY = "#eef2f5"
 TEXT_SECONDARY = "#7c8b98"  # menu items, section labels, field labels
 TEXT_DISABLED = "#455563"
@@ -27,8 +27,8 @@ TEXT_DISABLED = "#455563"
 # enough to soften a hard edge -- nowhere near a pill shape. Buttons and
 # fields get the tightest radius; menus/popovers/panels get one step up
 # since a bigger shape reads better with slightly more curve.
-RADIUS_TIGHT = "3px"   # buttons, inputs, list rows, checkboxes
-RADIUS_PANEL = "4px"   # menus, popups, tooltips, the live-view frame
+RADIUS_TIGHT = "3px"  # buttons, inputs, list rows, checkboxes
+RADIUS_PANEL = "4px"  # menus, popups, tooltips, the live-view frame
 
 # Sans-serif, tuned for small UI sizes rather than a document face --
 # Inter/SF/Segoe/Roboto are all designed with tall x-heights and open
@@ -429,5 +429,3 @@ PlaybackControls, FrameActionBar {{
     padding-left: 10px;
 }}
 """
-
-

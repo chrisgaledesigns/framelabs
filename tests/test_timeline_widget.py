@@ -492,9 +492,15 @@ def test_small_press_release_movement_still_emits_clicked(qtbot, tmp_path):
     assert blocker.args == [3, 0]
 
 
-def test_movement_past_threshold_suppresses_clicked(qtbot, tmp_path):
-    """Once movement crosses DRAG_THRESHOLD_PX, this becomes a drag-to-
-    scroll gesture, not a click -- `clicked` must not fire on release."""
+def test_press_resolves_clicked_immediately_not_again_on_release(qtbot, tmp_path):
+    """As of the reorder-on-drag work (backlog item #2 follow-up), a
+    plain press with no selection modifier and no existing multi-
+    selection resolves `clicked` immediately on press, not deferred to
+    release -- this is what lets a single continuous press-and-drag
+    reorder a not-yet-selected thumbnail without a separate prior click
+    (see FrameThumbnail.mousePressEvent's docstring). Once resolved on
+    press, `clicked` must not fire a second time on release even though
+    the gesture goes on to cross DRAG_THRESHOLD_PX."""
     _write_real_thumbnail(tmp_path, 1)
     thumbnail = FrameThumbnail(
         Frame(number=1, file="images/000001.png"),
@@ -504,10 +510,16 @@ def test_movement_past_threshold_suppresses_clicked(qtbot, tmp_path):
     )
     qtbot.addWidget(thumbnail)
 
-    with qtbot.assertNotEmitted(thumbnail.clicked):
-        _press(thumbnail, 100.0)
-        _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
-        _release(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+    clicks = []
+    thumbnail.clicked.connect(lambda index, mods: clicks.append((index, mods)))
+
+    _press(thumbnail, 100.0)
+    assert clicks == [(3, 0)]  # resolved immediately on press
+
+    _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+    _release(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+
+    assert clicks == [(3, 0)]  # not re-emitted on release
 
 
 def test_movement_past_threshold_emits_drag_scrolled_with_delta(qtbot, tmp_path):
@@ -535,10 +547,18 @@ def test_movement_past_threshold_emits_drag_scrolled_with_delta(qtbot, tmp_path)
 
 
 def test_widget_drag_scrolled_moves_horizontal_scrollbar(qtbot, tmp_path):
-    """A drag on any thumbnail must scroll TimelineWidget's own
-    horizontal scrollbar, "content follows the finger" style -- dragging
-    right (positive delta) reveals earlier frames, so the scrollbar
-    value goes down."""
+    """Drag-to-scroll (backlog item #1) still exists and still moves
+    TimelineWidget's own horizontal scrollbar -- "content follows the
+    finger" style, dragging right (positive delta) reveals earlier
+    frames, so the scrollbar value goes down. As of the reorder-on-drag
+    work (backlog item #2 follow-up), a *plain* drag on a previously
+    unselected thumbnail now reorders instead of scrolling (see
+    test_dragging_unselected_thumbnail_now_reorders_not_scrolls below),
+    so this drag is held with Shift -- a selection modifier defers
+    press-resolution to release, leaving the thumbnail's prior (here:
+    unselected) drag-eligibility in effect for the drag itself, which is
+    the one remaining path that still exercises the original drag-to-
+    scroll gesture end to end."""
     widget = TimelineWidget()
     qtbot.addWidget(widget)
     frames = [Frame(number=i, file=f"images/{i:06d}.png") for i in range(1, 21)]
@@ -556,16 +576,19 @@ def test_widget_drag_scrolled_moves_horizontal_scrollbar(qtbot, tmp_path):
     start_value = scrollbar.value()
 
     thumbnail = next(iter(widget._strip.findChildren(FrameThumbnail)))
-    _press(thumbnail, 100.0)
+    _press(thumbnail, 100.0, modifiers=Qt.KeyboardModifier.ShiftModifier)
     _move(thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
 
     assert scrollbar.value() == start_value - (DRAG_THRESHOLD_PX + 20)
 
 
-def test_widget_frame_selected_not_emitted_when_thumbnail_is_dragged(qtbot, tmp_path):
-    """A drag that starts on a thumbnail must not also select that frame
-    -- selection and scrolling are mutually exclusive outcomes of the
-    same gesture."""
+def test_widget_frame_selected_emitted_once_on_press_not_twice_on_drag(qtbot, tmp_path):
+    """As of the reorder-on-drag work (backlog item #2 follow-up), a
+    plain press on a not-yet-selected thumbnail selects it immediately
+    -- `frame_selected` fires on press, not deferred to release -- so
+    that a single continuous press-and-drag can reorder it. What must
+    still hold: selecting it doesn't happen a *second* time just because
+    the same press goes on to become a drag and is released."""
     widget = TimelineWidget()
     qtbot.addWidget(widget)
     frames = [
@@ -579,10 +602,16 @@ def test_widget_frame_selected_not_emitted_when_thumbnail_is_dragged(qtbot, tmp_
     thumbnails = widget._strip.findChildren(FrameThumbnail)
     second_thumbnail = next(t for t in thumbnails if t._index == 1)
 
-    with qtbot.assertNotEmitted(widget.frame_selected):
-        _press(second_thumbnail, 100.0)
-        _move(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
-        _release(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+    selections = []
+    widget.frame_selected.connect(selections.append)
+
+    _press(second_thumbnail, 100.0)
+    assert selections == [1]  # resolved immediately on press
+
+    _move(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+    _release(second_thumbnail, 100.0 + DRAG_THRESHOLD_PX + 20)
+
+    assert selections == [1]  # not emitted again on release
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +626,7 @@ def _setup_widget(qtbot, tmp_path, count: int) -> tuple:
     on-screen thumbnail positions, not the all-zero geometry a widget has
     before it's ever shown -- same reasoning
     test_widget_drag_scrolled_moves_horizontal_scrollbar already applies
-    for the existing drag-to-scroll gesture.
+    for the surviving modifier-held drag-to-scroll gesture.
     """
     widget = TimelineWidget()
     qtbot.addWidget(widget)
@@ -719,17 +748,22 @@ def test_multi_selected_frames_show_highlight_background(qtbot, tmp_path):
     assert MULTI_SELECT_BACKGROUND in thumbnails[2].styleSheet()
 
 
-def test_dragging_unselected_thumbnail_still_scrolls_not_reorders(qtbot, tmp_path):
-    """Dragging a thumbnail that was never selected must keep the
-    original drag-to-scroll gesture (backlog item #1) working exactly as
-    before -- only dragging a *selected* thumbnail should reorder."""
+def test_dragging_unselected_thumbnail_now_reorders_not_scrolls(qtbot, tmp_path):
+    """As of the reorder-on-drag work (backlog item #2 follow-up), a
+    plain press-and-drag on a thumbnail that was never selected now
+    reorders it -- press resolves selection immediately, making the
+    thumbnail drag-eligible before the drag itself even starts, so the
+    old "unselected drag always scrolls" contract (backlog item #1) no
+    longer holds for a plain drag. See
+    test_widget_drag_scrolled_moves_horizontal_scrollbar for the one
+    remaining path (a modifier-held drag) that still exercises the
+    original scroll gesture."""
     widget, frames, thumbnails = _setup_widget(qtbot, tmp_path, 4)
 
-    with qtbot.assertNotEmitted(widget.frames_reorder_requested):
-        with qtbot.waitSignal(thumbnails[0].drag_scrolled, timeout=1000):
+    with qtbot.assertNotEmitted(thumbnails[0].drag_scrolled):
+        with qtbot.waitSignal(thumbnails[0].reorder_dragged, timeout=1000):
             _press(thumbnails[0], _center_x(thumbnails[0]))
             _move(thumbnails[0], _center_x(thumbnails[0]) + DRAG_THRESHOLD_PX + 20)
-            _release(thumbnails[0], _center_x(thumbnails[0]) + DRAG_THRESHOLD_PX + 20)
 
 
 def test_dragging_selected_thumbnail_emits_reorder_not_scroll(qtbot, tmp_path):

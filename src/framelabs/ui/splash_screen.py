@@ -21,7 +21,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QSplashScreen
 
-from framelabs.ui.branding import current_version_text, find_hero_image, hero_banner_pixmap
+from framelabs.ui.branding import (
+    current_version_text,
+    find_hero_image,
+    hero_banner_pixmap,
+)
 from framelabs.ui.theme import ACCENT, BG_WINDOW
 
 SPLASH_WIDTH = 560

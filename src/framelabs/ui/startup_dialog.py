@@ -35,7 +35,11 @@ from PySide6.QtWidgets import (
 
 from framelabs.core.config import Config
 from framelabs.project.project import Project
-from framelabs.ui.branding import current_version_text, find_hero_image, hero_banner_pixmap
+from framelabs.ui.branding import (
+    current_version_text,
+    find_hero_image,
+    hero_banner_pixmap,
+)
 from framelabs.ui.new_project_dialog import NewProjectDialog
 
 HERO_WIDTH = 600

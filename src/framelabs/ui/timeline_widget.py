@@ -817,9 +817,7 @@ class TimelineWidget(QScrollArea):
             indicator_x = self._strip.width()
 
         self._pending_drop_before_number = insert_before_number
-        self._drop_indicator.setGeometry(
-            self._drop_indicator_geometry(indicator_x)
-        )
+        self._drop_indicator.setGeometry(self._drop_indicator_geometry(indicator_x))
         if self._drop_indicator.isHidden():
             self._drop_indicator.show()
             self._drop_indicator.raise_()
