@@ -174,6 +174,35 @@ QPushButton:flat:hover {{
     color: {ACCENT};
 }}
 
+/* Workspace tab bar (Edit/Composite/Export) -- always visible at the
+   very bottom of the window, outside every page's own content, same
+   role as Resolve's Edit/Fusion/Color/Fairlight/Deliver row. Sits on
+   BG_WINDOW (the same "bottom bar" chrome color the palette comment
+   already calls out) rather than a panel color, so it reads as part of
+   the window frame, not as content floating inside whichever page is
+   showing. */
+#workspaceTabBar {{
+    background-color: {BG_WINDOW};
+    border-top: 1px solid {BORDER};
+}}
+#workspaceTab {{
+    padding: 8px 22px;
+    border-radius: 0;
+    /* A 2px transparent top border reserves the same space the accent
+       top border takes on :checked below -- without this, the checked
+       tab's label would visibly shift up by 2px relative to the rest. */
+    border-top: 2px solid transparent;
+}}
+#workspaceTab:checked {{
+    background-color: {BG_PANEL_RAISED};
+    color: {ACCENT};
+    border-top: 2px solid {ACCENT};
+}}
+#workspaceTab:hover:!checked {{
+    color: {TEXT_PRIMARY};
+    background-color: {BG_PANEL_HOVER};
+}}
+
 /* Primary/default action -- the button a dialog's Enter key triggers
    (Create, Save, Ok, ...). Solid accent fill so the one action most
    people want stands out from every neutral button around it, instead

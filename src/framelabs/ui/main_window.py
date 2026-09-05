@@ -5,8 +5,10 @@ import shutil
 from functools import partial
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
-from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -32,10 +34,17 @@ from framelabs.core.config import Config, parse_shortcut
 from framelabs.core.event_bus import EventBus
 from framelabs.core.undo_manager import UndoManager
 from framelabs.export.export_service import ExportProgress, ExportRequest, ExportResult
+from framelabs.image_processing import compositor
 from framelabs.project.asset_commands import AddAssetCommand, RemoveAssetCommand
 from framelabs.project.asset_service import AssetServiceError
 from framelabs.project.autosave import has_recoverable_autosave
+from framelabs.project.composite_commands import (
+    AddCompositeLayerCommand,
+    RemoveCompositeLayerCommand,
+    ReorderCompositeLayerCommand,
+)
 from framelabs.project.project import Project
+from framelabs.project.serializer import ProjectSerializer
 from framelabs.timeline.onion_skin import OnionSkinSettings
 from framelabs.timeline.playback import PlaybackSettings
 from framelabs.timeline.timeline import Timeline
@@ -44,6 +53,7 @@ from framelabs.ui.blender_controller import BlenderBridgeController
 from framelabs.ui.blender_sync_controller import BlenderSyncController
 from framelabs.ui.camera_controller import CameraController
 from framelabs.ui.capture_controller import CaptureController
+from framelabs.ui.composite_workspace import CompositeWorkspace
 from framelabs.ui.composition_guides import (
     ASPECT_RATIO_GUIDE_TYPES,
     ASPECT_RATIO_LABELS,
@@ -70,6 +80,12 @@ from framelabs.ui.timeline_widget import (
     PlaybackControls,
     TimelineWidget,
 )
+from framelabs.ui.workspace_tab_bar import (
+    COMPOSITE,
+    EDIT,
+    EXPORT,
+    WorkspaceTabBar,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +101,27 @@ _EXPORT_FORMAT_LABELS = {
     "image_sequence": "Copying image sequence",
     "gif": "Encoding GIF",
 }
+
+
+def _numpy_rgb_to_pixmap(array: np.ndarray) -> QPixmap:
+    """Convert a composited (H, W, 3) uint8 RGB array into a QPixmap.
+
+    The one numpy<->Qt conversion point in this file -- everything
+    upstream of this call (image_processing/compositor.py) stays Qt-free
+    and unit-testable, per that module's own docstring; this function is
+    what lets its output actually reach CompositeWorkspace's QLabel.
+
+    QImage does not copy the buffer it's constructed from, so `array`
+    must stay alive at least as long as the QImage does -- `.copy()`
+    here forces that copy up front rather than risking `array` (a local
+    in _refresh_composite_preview()) being garbage-collected out from
+    under a QImage that still thinks it owns that memory.
+    """
+    height, width, _channels = array.shape
+    image = QImage(
+        array.tobytes(), width, height, width * 3, QImage.Format.Format_RGB888
+    )
+    return QPixmap.fromImage(image.copy())
 
 
 def _titled_pane(title: str, content: QWidget) -> QWidget:
@@ -301,6 +338,16 @@ class MainWindow(QMainWindow):
         self.export_render_action.setShortcuts(self._shortcuts("export"))
         self.export_render_action.triggered.connect(self._on_show_export_page)
 
+        # Starts disabled, same reasoning as PlaybackControls' Export
+        # button (see that widget's __init__) -- there's nothing to
+        # composite before a project is open. Re-enabled in
+        # _adopt_project().
+        self.composite_workspace_action = QAction("Composite Workspace", self)
+        self.composite_workspace_action.setEnabled(False)
+        self.composite_workspace_action.triggered.connect(
+            self._on_show_composite_workspace
+        )
+
         self.blender_action = QAction("Open in Blender", self)
         self.blender_action.setShortcuts(self._shortcuts("open_in_blender"))
         self.blender_action.triggered.connect(self._on_open_in_blender)
@@ -392,6 +439,9 @@ class MainWindow(QMainWindow):
         camera_menu = menu_bar.addMenu("&Camera")
         camera_menu.addAction(self.camera_action)
 
+        composite_menu = menu_bar.addMenu("Co&mposite")
+        composite_menu.addAction(self.composite_workspace_action)
+
         export_menu = menu_bar.addMenu("&Export")
         export_menu.addAction(self.export_render_action)
         export_menu.addSeparator()
@@ -404,9 +454,17 @@ class MainWindow(QMainWindow):
         with the Timeline strip, the per-frame action bar, and Playback
         controls stacked below it -- all as one page of a QStackedWidget,
         with the Export page (reached via the Export button in Playback
-        Controls' bottom-right corner, or the Export menu action) as the
-        other. A real page switch rather than a dialog popup, per Chris's
-        explicit choice -- see export_page.py's module docstring.
+        Controls' bottom-right corner, or the Export menu action) and the
+        Composite workspace (reached via WorkspaceTabBar or the Composite
+        menu action) as the other two pages. A real page switch rather
+        than a dialog popup, per Chris's explicit choice -- see
+        export_page.py's module docstring.
+
+        WorkspaceTabBar sits *outside* the QStackedWidget, pinned to the
+        very bottom of the window, so it's visible no matter which page
+        is showing -- see workspace_tab_bar.py's module docstring for why
+        that's what makes it a DaVinci-style workspace switcher rather
+        than just a third way to reach the Export page.
         """
         self.project_browser_widget = ProjectBrowserWidget()
         self.live_view_widget = LiveViewWidget()
@@ -461,11 +519,52 @@ class MainWindow(QMainWindow):
         self.export_page.export_requested.connect(self._on_export_page_export_requested)
         self.export_page.open_in_blender_requested.connect(self._on_open_in_blender)
 
+        self.composite_workspace = CompositeWorkspace()
+        self.composite_workspace.add_layer_requested.connect(
+            self._on_composite_add_layer_requested
+        )
+        self.composite_workspace.remove_layer_requested.connect(
+            self._on_composite_remove_layer_requested
+        )
+        self.composite_workspace.move_layer_requested.connect(
+            self._on_composite_move_layer_requested
+        )
+        self.composite_workspace.layer_visibility_toggled.connect(
+            self._on_composite_layer_visibility_toggled
+        )
+        self.composite_workspace.layer_opacity_changed.connect(
+            self._on_composite_layer_opacity_changed
+        )
+        self.composite_workspace.layer_blend_mode_changed.connect(
+            self._on_composite_layer_blend_mode_changed
+        )
+
         self._editor_page = central_widget
         self._central_stack = QStackedWidget()
         self._central_stack.addWidget(self._editor_page)
+        self._central_stack.addWidget(self.composite_workspace)
         self._central_stack.addWidget(self.export_page)
-        self.setCentralWidget(self._central_stack)
+
+        # Maps each WorkspaceTabBar id to the page it shows, so
+        # _on_workspace_selected() is a one-line lookup instead of an
+        # if/elif chain that has to stay in sync with the tab bar's own
+        # id list by hand.
+        self._workspace_pages = {
+            EDIT: self._editor_page,
+            COMPOSITE: self.composite_workspace,
+            EXPORT: self.export_page,
+        }
+
+        self.workspace_tab_bar = WorkspaceTabBar()
+        self.workspace_tab_bar.workspace_selected.connect(self._on_workspace_selected)
+
+        outer_widget = QWidget()
+        outer_layout = QVBoxLayout(outer_widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(self._central_stack, 1)
+        outer_layout.addWidget(self.workspace_tab_bar)
+        self.setCentralWidget(outer_widget)
 
     def _start_camera_controller(self) -> None:
         """Create the camera worker thread and wire its signals to the UI.
@@ -1198,19 +1297,192 @@ class MainWindow(QMainWindow):
         logger.info("Export deleted: %s", file_path)
         self.project_browser_widget.set_project(self.project)
 
-    def _on_show_export_page(self) -> None:
-        """Show the Export page, refreshed against whichever project is
-        currently open. Reached from the Export button in the
-        bottom-right corner of Playback Controls, or the "Export..."
-        menu action -- both funnel through here so the page is never
-        shown stale.
+    def _on_workspace_selected(self, workspace_id: str) -> None:
+        """Switch the central stack to `workspace_id`'s page and keep
+        WorkspaceTabBar's highlighted tab in sync.
+
+        This is the single place any workspace switch goes through --
+        WorkspaceTabBar's own clicks, the Export/Composite menu actions,
+        Playback Controls' Export button, and ExportPage's Back button
+        all funnel through here (via the thin wrapper methods below)
+        rather than each calling _central_stack.setCurrentWidget()
+        directly, so the tab bar can never drift out of sync with
+        whichever page is actually on screen.
+
+        Args:
+            workspace_id: One of workspace_tab_bar.EDIT, .COMPOSITE,
+                .EXPORT.
         """
-        self.export_page.set_project(self.project)
-        self._central_stack.setCurrentWidget(self.export_page)
+        if workspace_id == EXPORT:
+            self.export_page.set_project(self.project)
+        elif workspace_id == COMPOSITE:
+            self.composite_workspace.set_project(self.project)
+            self._refresh_composite_preview()
+
+        self._central_stack.setCurrentWidget(self._workspace_pages[workspace_id])
+        self.workspace_tab_bar.set_current_workspace(workspace_id)
+
+    def _on_show_export_page(self) -> None:
+        """Show the Export page. Reached from the Export button in the
+        bottom-right corner of Playback Controls, or the "Export..."
+        menu action -- both funnel through _on_workspace_selected() so
+        the page is never shown stale and the tab bar stays in sync.
+        """
+        self._on_workspace_selected(EXPORT)
+
+    def _on_show_composite_workspace(self) -> None:
+        """Show the Composite workspace. Reached from the Composite menu
+        action (WorkspaceTabBar's own tab click goes straight to
+        _on_workspace_selected() instead)."""
+        self._on_workspace_selected(COMPOSITE)
 
     def _on_export_page_back(self) -> None:
         """Return to the editor from the Export page's Back button."""
-        self._central_stack.setCurrentWidget(self._editor_page)
+        self._on_workspace_selected(EDIT)
+
+    # -- Composite workspace ---------------------------------------------
+
+    def _on_composite_add_layer_requested(self, source: str) -> None:
+        """Handle CompositeWorkspace's "Add Layer" button.
+
+        A single discrete action, so it goes through UndoManager like
+        every other structural project edit -- see composite_commands.py's
+        module docstring for why opacity/blend-mode/visibility tweaks
+        below do not.
+        """
+        if self.project is None:
+            return
+        command = AddCompositeLayerCommand(self.project, source)
+        self.undo_manager.execute(command)
+        self.composite_workspace.set_project(self.project)
+        self._refresh_composite_preview()
+
+    def _on_composite_remove_layer_requested(self, index: int) -> None:
+        if self.project is None:
+            return
+        command = RemoveCompositeLayerCommand(self.project, index)
+        self.undo_manager.execute(command)
+        self.composite_workspace.set_project(self.project)
+        self._refresh_composite_preview()
+
+    def _on_composite_move_layer_requested(self, old_index: int, new_index: int) -> None:
+        if self.project is None:
+            return
+        command = ReorderCompositeLayerCommand(self.project, old_index, new_index)
+        self.undo_manager.execute(command)
+        self.composite_workspace.set_project(self.project)
+        self._refresh_composite_preview()
+
+    def _on_composite_layer_visibility_toggled(self, index: int, visible: bool) -> None:
+        self._apply_composite_layer_edit(index, visible=visible)
+
+    def _on_composite_layer_opacity_changed(self, index: int, opacity: float) -> None:
+        self._apply_composite_layer_edit(index, opacity=opacity)
+
+    def _on_composite_layer_blend_mode_changed(self, index: int, blend_mode: str) -> None:
+        self._apply_composite_layer_edit(index, blend_mode=blend_mode)
+
+    def _apply_composite_layer_edit(
+        self,
+        index: int,
+        *,
+        opacity: float | None = None,
+        blend_mode: str | None = None,
+        visible: bool | None = None,
+    ) -> None:
+        """Mutate one CompositeLayer's field directly and re-save.
+
+        Deliberately not a Command: an opacity spinner or blend-mode
+        dropdown fires this once per intermediate value while the user
+        is still adjusting it, and a project already treats "no undo
+        entry per slider tick" as normal (e.g. GIF fps in ExportPage
+        isn't undoable either) -- see composite_commands.py's module
+        docstring. What *is* undoable is adding/removing/reordering the
+        layer itself, which these three signals never do.
+        """
+        if self.project is None or not (0 <= index < len(self.project.composite_layers)):
+            return
+        layer = self.project.composite_layers[index]
+        if opacity is not None:
+            layer.opacity = opacity
+        if blend_mode is not None:
+            layer.blend_mode = blend_mode
+        if visible is not None:
+            layer.visible = visible
+        ProjectSerializer.save(self.project)
+        self._refresh_composite_preview()
+
+    def _refresh_composite_preview(self) -> None:
+        """Recompute the Composite workspace's preview pixmap from
+        scratch and hand it to composite_workspace.set_preview_pixmap().
+
+        Loads the same "last captured frame" thumbnail ExportPage
+        previews from (see that page's _refresh_preview() docstring for
+        the thumbnails/{number:06d}.jpg convention this reuses), then
+        blends every visible composite_layers entry over it via
+        image_processing/compositor.py -- the one place in this file
+        pixel data crosses from disk into that Qt-free module and back
+        out again as a QPixmap.
+
+        A no-op if the Composite workspace isn't the page currently on
+        screen -- no sense spending the compositing work on a page
+        nobody can see. Every other "nothing to show yet" case (no
+        project, no frames captured, thumbnail missing) sets a specific
+        placeholder message via set_preview_pixmap() instead of leaving
+        the box blank with no explanation.
+        """
+        if self._central_stack.currentWidget() is not self.composite_workspace:
+            return
+        if self.project is None:
+            self.composite_workspace.set_preview_pixmap(None, message="No project open")
+            return
+        if self.project.project_path is None or not self.project.frames:
+            self.composite_workspace.set_preview_pixmap(
+                None, message="Capture at least one frame first"
+            )
+            return
+
+        thumbnail_path = (
+            self.project.project_path
+            / "thumbnails"
+            / f"{self.project.frames[-1].number:06d}.jpg"
+        )
+        if not thumbnail_path.exists():
+            self.composite_workspace.set_preview_pixmap(
+                None, message="Preview unavailable"
+            )
+            return
+
+        try:
+            base_frame = np.array(Image.open(thumbnail_path).convert("RGB"))
+            height, width = base_frame.shape[:2]
+
+            layers: list[tuple[np.ndarray, float, str]] = []
+            for layer in self.project.composite_layers:
+                if not layer.visible:
+                    continue
+                layer_path = self.project.project_path / layer.source
+                if not layer_path.exists():
+                    continue
+                layer_image = Image.open(layer_path).convert("RGB")
+                if layer_image.size != (width, height):
+                    # Overlays are arbitrary user images, not guaranteed
+                    # to already match the project's capture resolution
+                    # -- resize to fit rather than raising, so a
+                    # slightly-mismatched overlay still previews instead
+                    # of blanking the whole page.
+                    layer_image = layer_image.resize((width, height))
+                layers.append((np.array(layer_image), layer.opacity, layer.blend_mode))
+
+            composited = compositor.composite_frame(base_frame, layers)
+        except (OSError, compositor.CompositorError) as exc:
+            logger.error("Composite preview failed: %s", exc)
+            self.composite_workspace.set_preview_pixmap(
+                None, message="Preview unavailable"
+            )
+            return
+
+        self.composite_workspace.set_preview_pixmap(_numpy_rgb_to_pixmap(composited))
 
     def _on_export_page_export_requested(self, request: ExportRequest) -> None:
         """Fire only the formats checked on the Export page, on
@@ -2327,6 +2599,12 @@ class MainWindow(QMainWindow):
         # would otherwise leave it showing the previous project).
         self.playback_controls.export_button.setEnabled(True)
         self.export_page.set_project(project)
+        # Same reasoning as the Export button/page above, one paragraph
+        # up -- starts disabled since composite_workspace_action's
+        # QAction has no PlaybackControls-style widget of its own to
+        # inherit a disabled look from before a project exists.
+        self.composite_workspace_action.setEnabled(True)
+        self.composite_workspace.set_project(project)
         # Feature 11: any existing live-sync connection points at the
         # PREVIOUS project's Blender launch (a different project_path,
         # therefore a different port file) -- never valid for whatever

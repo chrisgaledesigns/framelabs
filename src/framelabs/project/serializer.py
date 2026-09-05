@@ -11,18 +11,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from framelabs.project.project import Frame, Project
+from framelabs.project.project import CompositeLayer, Frame, Project
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 # Every project.ffproj version this serializer can still read. Per the
 # Developer Handbook ("Versioned. Forward-compatible whenever possible."),
 # loading an older file must not hard-fail just because CURRENT_VERSION has
-# moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), and
-# v1/v2 files predate Project.audio/references/overlays (Project Browser's
-# Audio/References/Overlays sections), so those fields are read with
-# .get() defaults regardless of which supported version is on disk.
-SUPPORTED_VERSIONS = (1, 2, 3)
+# moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), v1/v2
+# files predate Project.audio/references/overlays (Project Browser's
+# Audio/References/Overlays sections), and v1/v2/v3 files predate
+# Project.composite_layers (the Composite workspace), so those fields are
+# read with .get() defaults regardless of which supported version is on
+# disk.
+SUPPORTED_VERSIONS = (1, 2, 3, 4)
 
 PROJECT_FILENAME = "project.ffproj"
 
@@ -96,6 +98,15 @@ class ProjectSerializer:
             "audio": list(project.audio),
             "references": list(project.references),
             "overlays": list(project.overlays),
+            "composite_layers": [
+                {
+                    "source": layer.source,
+                    "opacity": layer.opacity,
+                    "blend_mode": layer.blend_mode,
+                    "visible": layer.visible,
+                }
+                for layer in project.composite_layers
+            ],
         }
 
         file_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -192,6 +203,15 @@ class ProjectSerializer:
                 audio=list(data.get("audio", [])),
                 references=list(data.get("references", [])),
                 overlays=list(data.get("overlays", [])),
+                composite_layers=[
+                    CompositeLayer(
+                        source=layer["source"],
+                        opacity=layer.get("opacity", 1.0),
+                        blend_mode=layer.get("blend_mode", "normal"),
+                        visible=layer.get("visible", True),
+                    )
+                    for layer in data.get("composite_layers", [])
+                ],
                 project_path=project_path,
             )
         except KeyError as exc:

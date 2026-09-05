@@ -33,6 +33,37 @@ class Frame:
 
 
 @dataclass
+class CompositeLayer:
+    """One layer in the Composite workspace's effects stack.
+
+    Layers composite over every frame in the timeline (a project-wide
+    stack, not a per-frame one) -- the Composite workspace is meant as a
+    lightweight "look" pass over the whole shot (a vignette, a color
+    wash, a rough matte painting behind the puppet), not a per-frame
+    rotoscoping tool. `source` always points at an existing Project.overlays
+    entry rather than owning its own file, so adding a layer never copies
+    anything new onto disk -- see composite_commands.py.
+
+    Attributes:
+        source: Relative path (from the project root) of the overlay image
+            this layer draws from, e.g. "overlays/vignette.png". Must
+            already appear in Project.overlays.
+        opacity: 0.0-1.0 strength this layer is blended in at.
+        blend_mode: One of image_processing.compositor.BLEND_MODES
+            ("normal", "multiply", "screen", "overlay", "add").
+        visible: Whether this layer is currently included in the
+            composite. Kept separate from deleting the layer so a look
+            can be toggled off/on while iterating, per the same
+            show/hide-without-losing-settings pattern as Frame.marker.
+    """
+
+    source: str
+    opacity: float = 1.0
+    blend_mode: str = "normal"
+    visible: bool = True
+
+
+@dataclass
 class Project:
     """In-memory representation of a FrameLabs stop-motion project.
 
@@ -58,6 +89,10 @@ class Project:
         overlays: Relative paths of overlay image files added to the
             project, e.g. "overlays/rough_layout.png". Files live under
             the project's `overlays/` folder.
+        composite_layers: Ordered effects stack for the Composite
+            workspace, bottom-to-top (index 0 composites first, last
+            entry is drawn on top). Each entry draws from an existing
+            `overlays` file -- see CompositeLayer's own docstring.
         project_path: Filesystem folder this project lives in. Not part of
             the serialized project.ffproj file — set in memory after a
             project is created or loaded, since a project shouldn't
@@ -75,4 +110,5 @@ class Project:
     audio: list[str] = field(default_factory=list)
     references: list[str] = field(default_factory=list)
     overlays: list[str] = field(default_factory=list)
+    composite_layers: list[CompositeLayer] = field(default_factory=list)
     project_path: Path | None = None
