@@ -8,7 +8,14 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
-from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QImage, QKeySequence, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QDesktopServices,
+    QImage,
+    QKeySequence,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -1365,7 +1372,9 @@ class MainWindow(QMainWindow):
         self.composite_workspace.set_project(self.project)
         self._refresh_composite_preview()
 
-    def _on_composite_move_layer_requested(self, old_index: int, new_index: int) -> None:
+    def _on_composite_move_layer_requested(
+        self, old_index: int, new_index: int
+    ) -> None:
         if self.project is None:
             return
         command = ReorderCompositeLayerCommand(self.project, old_index, new_index)
@@ -1379,7 +1388,9 @@ class MainWindow(QMainWindow):
     def _on_composite_layer_opacity_changed(self, index: int, opacity: float) -> None:
         self._apply_composite_layer_edit(index, opacity=opacity)
 
-    def _on_composite_layer_blend_mode_changed(self, index: int, blend_mode: str) -> None:
+    def _on_composite_layer_blend_mode_changed(
+        self, index: int, blend_mode: str
+    ) -> None:
         self._apply_composite_layer_edit(index, blend_mode=blend_mode)
 
     def _apply_composite_layer_edit(
@@ -1400,7 +1411,9 @@ class MainWindow(QMainWindow):
         docstring. What *is* undoable is adding/removing/reordering the
         layer itself, which these three signals never do.
         """
-        if self.project is None or not (0 <= index < len(self.project.composite_layers)):
+        if self.project is None or not (
+            0 <= index < len(self.project.composite_layers)
+        ):
             return
         layer = self.project.composite_layers[index]
         if opacity is not None:

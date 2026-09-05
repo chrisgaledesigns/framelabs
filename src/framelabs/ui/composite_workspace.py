@@ -302,7 +302,9 @@ class CompositeWorkspace(QWidget):
         )
         self.layer_list.addItem(item)
 
-    def set_preview_pixmap(self, pixmap: QPixmap | None, message: str = "No preview available") -> None:
+    def set_preview_pixmap(
+        self, pixmap: QPixmap | None, message: str = "No preview available"
+    ) -> None:
         """Show the already-composited preview MainWindow computed via
         image_processing/compositor.py. This page never composites
         anything itself -- see this module's docstring.

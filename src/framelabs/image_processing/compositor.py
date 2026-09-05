@@ -58,9 +58,7 @@ def _blend(base: np.ndarray, top: np.ndarray, mode: str) -> np.ndarray:
         )
     if mode == "add":
         return base + top
-    raise CompositorError(
-        f"Unknown blend mode {mode!r}; expected one of {BLEND_MODES}"
-    )
+    raise CompositorError(f"Unknown blend mode {mode!r}; expected one of {BLEND_MODES}")
 
 
 def composite_frame(
