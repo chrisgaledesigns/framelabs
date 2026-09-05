@@ -8,11 +8,22 @@ layer -- go through undo/redo here. Per-layer opacity/blend-mode/
 visibility tweaks are applied directly by CompositeWorkspace's caller
 (main_window.py) without a Command, the same way dragging a volume slider
 elsewhere in the app doesn't produce one undo entry per pixel of drag --
-see main_window.py's _on_composite_layer_changed() docstring for that
+see main_window.py's _apply_composite_layer_edit() docstring for that
 reasoning. Every entry here is drawn from Project.overlays (never copies
 a new file), so unlike AddAssetCommand/RemoveAssetCommand in
 asset_commands.py, no on-disk backup is ever needed for undo: the
 overlay file itself is untouched either way.
+
+Every command here follows the standard mutate -> save -> publish order
+(see the Developer Handbook / this project's hand-off conventions),
+publishing COMPOSITE_LAYER_ADDED, COMPOSITE_LAYER_REMOVED, or
+COMPOSITE_LAYERS_REORDERED on both do() and the appropriate inverse on
+undo() -- e.g. RemoveCompositeLayerCommand.undo() publishes
+COMPOSITE_LAYER_ADDED, mirroring RemoveAssetCommand.undo()'s own
+AUDIO_ADDED/REFERENCE_ADDED/OVERLAY_ADDED pattern in asset_commands.py.
+Nothing subscribes to these yet as of this writing, but publishing them
+now keeps this module consistent with every other command in the
+codebase rather than being a silent, undocumented exception.
 """
 
 from __future__ import annotations
@@ -20,6 +31,7 @@ from __future__ import annotations
 import logging
 
 from framelabs.core.command import Command
+from framelabs.core.event_bus import EventBus
 from framelabs.project.project import CompositeLayer, Project
 from framelabs.project.serializer import ProjectSerializer
 
@@ -29,15 +41,20 @@ logger = logging.getLogger(__name__)
 class AddCompositeLayerCommand(Command):
     """Append a new layer to the top of the Composite workspace's stack."""
 
-    def __init__(self, project: Project, source: str) -> None:
+    def __init__(self, project: Project, event_bus: EventBus, source: str) -> None:
         """Prepare to add a layer drawing from `source`.
 
         Args:
             project: The active project.
+            event_bus: The event bus to publish COMPOSITE_LAYER_ADDED /
+                COMPOSITE_LAYER_REMOVED on, matching every other
+                project-mutating command's do()/undo() -- see
+                asset_commands.py for the same pattern.
             source: Relative path of an existing Project.overlays entry,
                 e.g. "overlays/vignette.png".
         """
         self._project = project
+        self._event_bus = event_bus
         self._layer = CompositeLayer(source=source)
 
     @property
@@ -47,10 +64,14 @@ class AddCompositeLayerCommand(Command):
     def do(self) -> None:
         self._project.composite_layers.append(self._layer)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish("COMPOSITE_LAYER_ADDED", {"source": self._layer.source})
 
     def undo(self) -> None:
         self._project.composite_layers.remove(self._layer)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "COMPOSITE_LAYER_REMOVED", {"source": self._layer.source}
+        )
 
 
 class RemoveCompositeLayerCommand(Command):
@@ -61,11 +82,13 @@ class RemoveCompositeLayerCommand(Command):
     than a freshly-defaulted layer at the same source.
     """
 
-    def __init__(self, project: Project, index: int) -> None:
+    def __init__(self, project: Project, event_bus: EventBus, index: int) -> None:
         """Prepare to remove the layer currently at `index`.
 
         Args:
             project: The active project.
+            event_bus: The event bus to publish COMPOSITE_LAYER_REMOVED /
+                COMPOSITE_LAYER_ADDED on, matching AddCompositeLayerCommand.
             index: Position of the layer to remove within
                 project.composite_layers at the time this command is
                 constructed. Captured immediately (not re-looked-up in
@@ -73,6 +96,7 @@ class RemoveCompositeLayerCommand(Command):
                 state this command will act on.
         """
         self._project = project
+        self._event_bus = event_bus
         self._index = index
         self._removed_layer: CompositeLayer | None = None
 
@@ -90,6 +114,9 @@ class RemoveCompositeLayerCommand(Command):
             self._removed_layer = self._project.composite_layers[self._index]
         self._project.composite_layers.pop(self._index)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "COMPOSITE_LAYER_REMOVED", {"source": self._removed_layer.source}
+        )
 
     def undo(self) -> None:
         """Reinsert the removed layer at its original index.
@@ -104,6 +131,9 @@ class RemoveCompositeLayerCommand(Command):
             )
         self._project.composite_layers.insert(self._index, self._removed_layer)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "COMPOSITE_LAYER_ADDED", {"source": self._removed_layer.source}
+        )
 
 
 class ReorderCompositeLayerCommand(Command):
@@ -115,8 +145,11 @@ class ReorderCompositeLayerCommand(Command):
     granularity TimelineWidget uses for frames.
     """
 
-    def __init__(self, project: Project, old_index: int, new_index: int) -> None:
+    def __init__(
+        self, project: Project, event_bus: EventBus, old_index: int, new_index: int
+    ) -> None:
         self._project = project
+        self._event_bus = event_bus
         self._old_index = old_index
         self._new_index = new_index
 
@@ -129,9 +162,17 @@ class ReorderCompositeLayerCommand(Command):
         layer = layers.pop(self._old_index)
         layers.insert(self._new_index, layer)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "COMPOSITE_LAYERS_REORDERED",
+            {"old_index": self._old_index, "new_index": self._new_index},
+        )
 
     def undo(self) -> None:
         layers = self._project.composite_layers
         layer = layers.pop(self._new_index)
         layers.insert(self._old_index, layer)
         ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "COMPOSITE_LAYERS_REORDERED",
+            {"old_index": self._new_index, "new_index": self._old_index},
+        )

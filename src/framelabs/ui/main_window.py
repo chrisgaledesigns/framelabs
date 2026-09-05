@@ -1359,7 +1359,7 @@ class MainWindow(QMainWindow):
         """
         if self.project is None:
             return
-        command = AddCompositeLayerCommand(self.project, source)
+        command = AddCompositeLayerCommand(self.project, self.event_bus, source)
         self.undo_manager.execute(command)
         self.composite_workspace.set_project(self.project)
         self._refresh_composite_preview()
@@ -1367,7 +1367,7 @@ class MainWindow(QMainWindow):
     def _on_composite_remove_layer_requested(self, index: int) -> None:
         if self.project is None:
             return
-        command = RemoveCompositeLayerCommand(self.project, index)
+        command = RemoveCompositeLayerCommand(self.project, self.event_bus, index)
         self.undo_manager.execute(command)
         self.composite_workspace.set_project(self.project)
         self._refresh_composite_preview()
@@ -1377,7 +1377,9 @@ class MainWindow(QMainWindow):
     ) -> None:
         if self.project is None:
             return
-        command = ReorderCompositeLayerCommand(self.project, old_index, new_index)
+        command = ReorderCompositeLayerCommand(
+            self.project, self.event_bus, old_index, new_index
+        )
         self.undo_manager.execute(command)
         self.composite_workspace.set_project(self.project)
         self._refresh_composite_preview()
@@ -1409,7 +1411,11 @@ class MainWindow(QMainWindow):
         entry per slider tick" as normal (e.g. GIF fps in ExportPage
         isn't undoable either) -- see composite_commands.py's module
         docstring. What *is* undoable is adding/removing/reordering the
-        layer itself, which these three signals never do.
+        layer itself, which these three signals never do. Still
+        publishes COMPOSITE_LAYER_UPDATED after saving, though, matching
+        every other mutate-then-save path in the app -- the "no Command"
+        exception here is specifically about undo granularity, not about
+        skipping the EventBus notification too.
         """
         if self.project is None or not (
             0 <= index < len(self.project.composite_layers)
@@ -1423,6 +1429,7 @@ class MainWindow(QMainWindow):
         if visible is not None:
             layer.visible = visible
         ProjectSerializer.save(self.project)
+        self.event_bus.publish("COMPOSITE_LAYER_UPDATED", {"index": index})
         self._refresh_composite_preview()
 
     def _refresh_composite_preview(self) -> None:
