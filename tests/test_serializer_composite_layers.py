@@ -113,7 +113,7 @@ def test_save_writes_composite_layers_json_shape(tmp_path):
     ProjectSerializer.save(project)
     data = json.loads((tmp_path / "project.ffproj").read_text(encoding="utf-8"))
 
-    assert data["version"] == 4
+    assert data["version"] == CURRENT_VERSION
     assert data["composite_layers"] == [
         {
             "source": "overlays/vignette.png",
@@ -135,12 +135,17 @@ def test_save_writes_composite_layers_json_shape(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_current_version_is_4():
-    assert CURRENT_VERSION == 4
+def test_current_version_is_5():
+    # Bumped 4 -> 5 by the working_range patch (Project.working_range /
+    # the Composite workspace's NLA-style strip editor). This test's own
+    # name and literal are updated here rather than left generic
+    # (`== CURRENT_VERSION`) so a future accidental bump is caught by a
+    # failing assertion instead of silently passing.
+    assert CURRENT_VERSION == 5
 
 
-def test_supported_versions_includes_1_through_4():
-    assert SUPPORTED_VERSIONS == (1, 2, 3, 4)
+def test_supported_versions_includes_1_through_5():
+    assert SUPPORTED_VERSIONS == (1, 2, 3, 4, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +227,7 @@ def test_load_v3_file_then_resave_persists_composite_layers_key(tmp_path):
     ProjectSerializer.save(project)
     data = json.loads((tmp_path / "project.ffproj").read_text(encoding="utf-8"))
 
-    assert data["version"] == 4
+    assert data["version"] == CURRENT_VERSION
     assert data["composite_layers"] == []
 
 

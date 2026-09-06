@@ -93,6 +93,17 @@ class Project:
             workspace, bottom-to-top (index 0 composites first, last
             entry is drawn on top). Each entry draws from an existing
             `overlays` file -- see CompositeLayer's own docstring.
+        working_range: Optional (start_frame, end_frame) inclusive range,
+            by Frame.number, marking which part of the sequence is
+            currently "in" for the Composite workspace's NLA-style strip
+            editor. None means the whole sequence is in range (the
+            default for every existing and newly-created project).
+            Non-destructive: frames outside this range are never removed
+            or altered, only flagged out-of-range by whichever UI is
+            displaying the sequence (both the Composite workspace's strip
+            editor and the Capture tab's TimelineWidget read the same
+            field, since they share one Project -- see
+            composite_commands.py's SetWorkingRangeCommand).
         project_path: Filesystem folder this project lives in. Not part of
             the serialized project.ffproj file — set in memory after a
             project is created or loaded, since a project shouldn't
@@ -111,4 +122,5 @@ class Project:
     references: list[str] = field(default_factory=list)
     overlays: list[str] = field(default_factory=list)
     composite_layers: list[CompositeLayer] = field(default_factory=list)
+    working_range: tuple[int, int] | None = None
     project_path: Path | None = None

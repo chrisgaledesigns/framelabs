@@ -24,6 +24,19 @@ AUDIO_ADDED/REFERENCE_ADDED/OVERLAY_ADDED pattern in asset_commands.py.
 Nothing subscribes to these yet as of this writing, but publishing them
 now keeps this module consistent with every other command in the
 codebase rather than being a silent, undocumented exception.
+
+SetWorkingRangeCommand is a different shape from the three layer-stack
+commands above -- it doesn't touch composite_layers at all, it sets
+Project.working_range (the Composite workspace's NLA-style strip
+editor's in/out trim). It lives here rather than in a new module because
+it's driven by the same Composite workspace UI and follows the identical
+mutate -> save -> publish -> undo pattern, publishing
+WORKING_RANGE_CHANGED. Per this feature's own design (see the project
+hand-off), trimming is always non-destructive: no Frame is ever removed
+or altered, only the shared Project.working_range value changes, which
+both the Composite workspace's strip editor and the Capture tab's
+TimelineWidget read from the same Project to decide what to render as
+out-of-range.
 """
 
 from __future__ import annotations
@@ -175,4 +188,67 @@ class ReorderCompositeLayerCommand(Command):
         self._event_bus.publish(
             "COMPOSITE_LAYERS_REORDERED",
             {"old_index": self._new_index, "new_index": self._old_index},
+        )
+
+
+class SetWorkingRangeCommand(Command):
+    """Set the Composite workspace's NLA-style strip trim (in/out points).
+
+    Non-destructive: only Project.working_range changes. No Frame is ever
+    removed, reordered, or otherwise touched, and no on-disk backup is
+    needed for undo since nothing irreplaceable is ever at risk -- undo
+    just restores the previous (start, end) tuple (or None, if the strip
+    was untrimmed before this command ran).
+    """
+
+    def __init__(
+        self,
+        project: Project,
+        event_bus: EventBus,
+        new_range: tuple[int, int] | None,
+    ) -> None:
+        """Prepare to set the working range to `new_range`.
+
+        Args:
+            project: The active project.
+            event_bus: The event bus to publish WORKING_RANGE_CHANGED on,
+                matching every other project-mutating command's
+                do()/undo().
+            new_range: The (start_frame, end_frame) inclusive range to
+                trim to, by Frame.number, or None to clear the trim and
+                mark the whole sequence in-range again.
+
+        Raises:
+            ValueError: If new_range is given but start_frame is greater
+                than end_frame -- caught here, before do() ever runs,
+                rather than left to produce a backwards/empty range.
+        """
+        if new_range is not None and new_range[0] > new_range[1]:
+            raise ValueError(
+                f"working_range start ({new_range[0]}) cannot be greater "
+                f"than end ({new_range[1]})"
+            )
+        self._project = project
+        self._event_bus = event_bus
+        self._new_range = new_range
+        self._old_range = project.working_range
+
+    @property
+    def description(self) -> str:
+        if self._new_range is None:
+            return "Clear Composite Working Range"
+        return f"Set Composite Working Range {self._new_range[0]}-{self._new_range[1]}"
+
+    def do(self) -> None:
+        self._project.working_range = self._new_range
+        ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "WORKING_RANGE_CHANGED", {"working_range": self._new_range}
+        )
+
+    def undo(self) -> None:
+        self._project.working_range = self._old_range
+        ProjectSerializer.save(self._project)
+        self._event_bus.publish(
+            "WORKING_RANGE_CHANGED", {"working_range": self._old_range}
         )

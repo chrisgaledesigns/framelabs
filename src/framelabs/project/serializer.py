@@ -13,18 +13,19 @@ from pathlib import Path
 
 from framelabs.project.project import CompositeLayer, Frame, Project
 
-CURRENT_VERSION = 4
+CURRENT_VERSION = 5
 
 # Every project.ffproj version this serializer can still read. Per the
 # Developer Handbook ("Versioned. Forward-compatible whenever possible."),
 # loading an older file must not hard-fail just because CURRENT_VERSION has
 # moved on -- v1 files predate Frame.notes/Frame.marker (Feature 5), v1/v2
 # files predate Project.audio/references/overlays (Project Browser's
-# Audio/References/Overlays sections), and v1/v2/v3 files predate
-# Project.composite_layers (the Composite workspace), so those fields are
-# read with .get() defaults regardless of which supported version is on
-# disk.
-SUPPORTED_VERSIONS = (1, 2, 3, 4)
+# Audio/References/Overlays sections), v1/v2/v3 files predate
+# Project.composite_layers (the Composite workspace), and v1/v2/v3/v4 files
+# predate Project.working_range (the Composite workspace's NLA-style strip
+# editor), so those fields are read with .get() defaults regardless of
+# which supported version is on disk.
+SUPPORTED_VERSIONS = (1, 2, 3, 4, 5)
 
 PROJECT_FILENAME = "project.ffproj"
 
@@ -107,6 +108,11 @@ class ProjectSerializer:
                 }
                 for layer in project.composite_layers
             ],
+            "working_range": (
+                list(project.working_range)
+                if project.working_range is not None
+                else None
+            ),
         }
 
         file_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -212,6 +218,11 @@ class ProjectSerializer:
                     )
                     for layer in data.get("composite_layers", [])
                 ],
+                working_range=(
+                    tuple(data["working_range"])
+                    if data.get("working_range") is not None
+                    else None
+                ),
                 project_path=project_path,
             )
         except KeyError as exc:
